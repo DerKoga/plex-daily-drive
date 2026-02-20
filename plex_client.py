@@ -1,5 +1,7 @@
 import logging
+from urllib.parse import urlparse
 
+import requests
 from plexapi.server import PlexServer
 
 import config
@@ -22,10 +24,24 @@ def _get_plex_token():
     return token if token else config.PLEX_TOKEN
 
 
+def _make_session(url):
+    """Create a requests session, disabling SSL verification for local/HTTPS connections."""
+    session = requests.Session()
+    parsed = urlparse(url)
+    if parsed.scheme == "https":
+        session.verify = False
+        # Suppress InsecureRequestWarning for local Plex servers
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    return session
+
+
 def get_server():
     global _server
     if _server is None:
-        _server = PlexServer(_get_plex_url(), _get_plex_token())
+        url = _get_plex_url()
+        session = _make_session(url)
+        _server = PlexServer(url, _get_plex_token(), session=session)
     return _server
 
 
