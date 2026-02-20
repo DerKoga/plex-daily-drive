@@ -61,6 +61,8 @@ def api_save_settings():
         return jsonify({"error": "No data provided"}), 400
 
     allowed_keys = {
+        "plex_url",
+        "plex_token",
         "playlist_prefix",
         "music_count",
         "podcast_count",
@@ -83,6 +85,10 @@ def api_save_settings():
                 to_save[key] = value
 
     db.save_settings(to_save)
+
+    # Reset Plex connection if URL or token changed
+    if "plex_url" in data or "plex_token" in data:
+        plex_client.reset_connection()
 
     # Reschedule if time changed
     if "schedule_hour" in data or "schedule_minute" in data:
@@ -120,6 +126,11 @@ def api_playlists():
 
 @app.route("/api/test-connection", methods=["POST"])
 def api_test_connection():
+    data = request.get_json() or {}
+    if "plex_url" in data:
+        db.save_setting("plex_url", data["plex_url"])
+    if "plex_token" in data:
+        db.save_setting("plex_token", data["plex_token"])
     plex_client.reset_connection()
     result = plex_client.test_connection()
     return jsonify(result)

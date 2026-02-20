@@ -187,6 +187,30 @@ header h1 {
     cursor: not-allowed;
 }
 
+.token-field {
+    display: flex;
+    gap: 8px;
+}
+
+.token-field input {
+    flex: 1;
+}
+
+.btn-small {
+    padding: 8px 12px;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+.form-group small a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.form-group small a:hover {
+    text-decoration: underline;
+}
+
 .form-row {
     display: grid;
     grid-template-columns: 1fr 1fr;

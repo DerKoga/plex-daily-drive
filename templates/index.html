@@ -43,16 +43,17 @@
             <div class="card">
                 <h2>Plex Verbindung</h2>
                 <div class="form-group">
-                    <label>Plex URL</label>
-                    <input type="text" id="plex-url" placeholder="http://localhost:32400" readonly
-                           title="Via Umgebungsvariable PLEX_URL konfiguriert">
-                    <small>Konfiguriert via Umgebungsvariable PLEX_URL</small>
+                    <label for="plex-url">Plex URL</label>
+                    <input type="text" id="plex-url" placeholder="http://192.168.1.x:32400">
+                    <small>IP-Adresse deines Plex Servers (nicht localhost wenn Docker!)</small>
                 </div>
                 <div class="form-group">
-                    <label>Plex Token</label>
-                    <input type="password" id="plex-token" placeholder="****" readonly
-                           title="Via Umgebungsvariable PLEX_TOKEN konfiguriert">
-                    <small>Konfiguriert via Umgebungsvariable PLEX_TOKEN</small>
+                    <label for="plex-token">Plex Token</label>
+                    <div class="token-field">
+                        <input type="password" id="plex-token" placeholder="Dein Plex Token">
+                        <button type="button" class="btn btn-small btn-secondary" onclick="toggleToken()">Zeigen</button>
+                    </div>
+                    <small><a href="https://support.plex.tv/articles/204059436/" target="_blank" rel="noopener">Wie finde ich meinen Plex Token?</a></small>
                 </div>
                 <button class="btn btn-secondary" onclick="testConnection()">Verbindung testen</button>
                 <div id="connection-result" class="result-box hidden"></div>

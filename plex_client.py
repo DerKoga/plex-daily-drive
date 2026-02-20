@@ -3,16 +3,29 @@ import logging
 from plexapi.server import PlexServer
 
 import config
+import database as db
 
 logger = logging.getLogger(__name__)
 
 _server = None
 
 
+def _get_plex_url():
+    """Get Plex URL from DB settings, falling back to env var."""
+    url = db.get_setting("plex_url")
+    return url if url else config.PLEX_URL
+
+
+def _get_plex_token():
+    """Get Plex token from DB settings, falling back to env var."""
+    token = db.get_setting("plex_token")
+    return token if token else config.PLEX_TOKEN
+
+
 def get_server():
     global _server
     if _server is None:
-        _server = PlexServer(config.PLEX_URL, config.PLEX_TOKEN)
+        _server = PlexServer(_get_plex_url(), _get_plex_token())
     return _server
 
 

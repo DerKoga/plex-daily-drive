@@ -62,6 +62,8 @@ async function loadSettings() {
         const res = await fetch("/api/settings");
         settings = await res.json();
 
+        document.getElementById("plex-url").value = settings.plex_url || "";
+        document.getElementById("plex-token").value = settings.plex_token || "";
         document.getElementById("playlist-prefix").value = settings.playlist_prefix || "Daily Drive";
         document.getElementById("keep-days").value = settings.keep_days || "7";
         document.getElementById("music-count").value = settings.music_count || "20";
@@ -81,6 +83,8 @@ async function saveSettings() {
     const podcastLibs = getSelectedLibraries("podcast");
 
     const data = {
+        plex_url: document.getElementById("plex-url").value,
+        plex_token: document.getElementById("plex-token").value,
         playlist_prefix: document.getElementById("playlist-prefix").value,
         keep_days: document.getElementById("keep-days").value,
         music_count: document.getElementById("music-count").value,
@@ -170,7 +174,14 @@ async function testConnection() {
     resultEl.innerHTML = '<span class="spinner"></span> Teste Verbindung...';
 
     try {
-        const res = await fetch("/api/test-connection", { method: "POST" });
+        const res = await fetch("/api/test-connection", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                plex_url: document.getElementById("plex-url").value,
+                plex_token: document.getElementById("plex-token").value,
+            }),
+        });
         const data = await res.json();
         if (data.success) {
             showResult("connection-result", true, "Verbunden mit " + data.server_name + " (v" + data.version + ")");
@@ -288,6 +299,18 @@ async function loadHistory() {
 }
 
 // --- Helpers ---
+
+function toggleToken() {
+    const input = document.getElementById("plex-token");
+    const btn = input.nextElementSibling;
+    if (input.type === "password") {
+        input.type = "text";
+        btn.textContent = "Verbergen";
+    } else {
+        input.type = "password";
+        btn.textContent = "Zeigen";
+    }
+}
 
 function showResult(elementId, success, message) {
     const el = document.getElementById(elementId);

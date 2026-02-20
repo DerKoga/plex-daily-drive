@@ -41,6 +41,8 @@ def init_db():
             )
         """)
         defaults = {
+            "plex_url": config.PLEX_URL,
+            "plex_token": config.PLEX_TOKEN,
             "playlist_prefix": "Daily Drive",
             "music_count": "20",
             "podcast_count": "3",
