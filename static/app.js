@@ -1,6 +1,7 @@
 // State
 let settings = {};
 let libraries = [];
+let schedules = [{ hour: 6, minute: 0 }];
 
 // --- Init ---
 
@@ -9,6 +10,14 @@ document.addEventListener("DOMContentLoaded", () => {
     loadStatus();
     loadSettings();
     loadLibraries();
+
+    // Enter key for podcast search
+    const searchInput = document.getElementById("podcast-search-input");
+    if (searchInput) {
+        searchInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") searchPodcasts();
+        });
+    }
 });
 
 // --- Tabs ---
@@ -23,6 +32,7 @@ function initTabs() {
 
             if (tab.dataset.tab === "history") loadHistory();
             if (tab.dataset.tab === "generate") loadPlaylists();
+            if (tab.dataset.tab === "podcasts") loadSubscribedPodcasts();
         });
     });
 }
@@ -48,7 +58,11 @@ async function loadStatus() {
         schedEl.className = "status-value " + (data.enabled ? "status-ok" : "status-warn");
 
         const nextEl = document.getElementById("next-run");
-        nextEl.textContent = data.next_run || "Nicht geplant";
+        if (data.next_runs && data.next_runs.length > 0) {
+            nextEl.textContent = data.next_runs.join(", ");
+        } else {
+            nextEl.textContent = data.next_run || "Nicht geplant";
+        }
     } catch {
         document.getElementById("plex-status").textContent = "Fehler";
         document.getElementById("plex-status").className = "status-value status-error";
@@ -68,11 +82,17 @@ async function loadSettings() {
         document.getElementById("keep-days").value = settings.keep_days || "7";
         document.getElementById("music-count").value = settings.music_count || "20";
         document.getElementById("podcast-count").value = settings.podcast_count || "3";
-        document.getElementById("schedule-hour").value = settings.schedule_hour || "6";
-        document.getElementById("schedule-minute").value = settings.schedule_minute || "0";
+        document.getElementById("podcast-download-path").value = settings.podcast_download_path || "/podcasts";
+        document.getElementById("podcast-max-episodes").value = settings.podcast_max_episodes || "3";
         document.getElementById("enabled").checked = settings.enabled === "true";
-        document.getElementById("podcast-recent-only").checked = settings.podcast_recent_only === "true";
-        document.getElementById("podcast-unplayed-only").checked = settings.podcast_unplayed_only === "true";
+
+        // Load schedules
+        try {
+            schedules = JSON.parse(settings.schedules || '[{"hour": 6, "minute": 0}]');
+        } catch {
+            schedules = [{ hour: 6, minute: 0 }];
+        }
+        renderSchedules();
     } catch (e) {
         console.error("Failed to load settings:", e);
     }
@@ -80,7 +100,9 @@ async function loadSettings() {
 
 async function saveSettings() {
     const musicLibs = getSelectedLibraries("music");
-    const podcastLibs = getSelectedLibraries("podcast");
+
+    // Collect schedules from UI
+    collectSchedules();
 
     const data = {
         plex_url: document.getElementById("plex-url").value,
@@ -89,13 +111,11 @@ async function saveSettings() {
         keep_days: document.getElementById("keep-days").value,
         music_count: document.getElementById("music-count").value,
         podcast_count: document.getElementById("podcast-count").value,
-        schedule_hour: document.getElementById("schedule-hour").value,
-        schedule_minute: document.getElementById("schedule-minute").value,
+        podcast_download_path: document.getElementById("podcast-download-path").value,
+        podcast_max_episodes: document.getElementById("podcast-max-episodes").value,
         enabled: document.getElementById("enabled").checked ? "true" : "false",
-        podcast_recent_only: document.getElementById("podcast-recent-only").checked ? "true" : "false",
-        podcast_unplayed_only: document.getElementById("podcast-unplayed-only").checked ? "true" : "false",
         music_libraries: musicLibs,
-        podcast_libraries: podcastLibs,
+        schedules: schedules,
     };
 
     try {
@@ -112,6 +132,46 @@ async function saveSettings() {
     }
 }
 
+// --- Schedules ---
+
+function renderSchedules() {
+    const container = document.getElementById("schedules-list");
+    if (schedules.length === 0) {
+        schedules = [{ hour: 6, minute: 0 }];
+    }
+    container.innerHTML = schedules
+        .map((s, i) => `
+            <div class="schedule-row" data-index="${i}">
+                <input type="number" class="schedule-hour" value="${s.hour}" min="0" max="23" placeholder="Std">
+                <span class="schedule-sep">:</span>
+                <input type="number" class="schedule-minute" value="${s.minute}" min="0" max="59" placeholder="Min">
+                <span class="schedule-label">Uhr</span>
+                ${schedules.length > 1 ? `<button class="btn btn-small btn-danger" onclick="removeSchedule(${i})">&#10005;</button>` : ""}
+            </div>
+        `)
+        .join("");
+}
+
+function addSchedule() {
+    collectSchedules();
+    schedules.push({ hour: 12, minute: 0 });
+    renderSchedules();
+}
+
+function removeSchedule(index) {
+    collectSchedules();
+    schedules.splice(index, 1);
+    renderSchedules();
+}
+
+function collectSchedules() {
+    const rows = document.querySelectorAll(".schedule-row");
+    schedules = Array.from(rows).map((row) => ({
+        hour: parseInt(row.querySelector(".schedule-hour").value) || 0,
+        minute: parseInt(row.querySelector(".schedule-minute").value) || 0,
+    }));
+}
+
 // --- Libraries ---
 
 async function loadLibraries() {
@@ -123,19 +183,15 @@ async function loadLibraries() {
         const currentSettings = await settingsRes.json();
 
         let selectedMusic = [];
-        let selectedPodcasts = [];
         try {
             selectedMusic = JSON.parse(currentSettings.music_libraries || "[]");
-            selectedPodcasts = JSON.parse(currentSettings.podcast_libraries || "[]");
         } catch { /* ignore */ }
 
         const artistLibs = libraries.filter((l) => l.type === "artist");
 
         renderLibraryList("music-libraries", artistLibs, selectedMusic, "music");
-        renderLibraryList("podcast-libraries", artistLibs, selectedPodcasts, "podcast");
     } catch (e) {
         document.getElementById("music-libraries").innerHTML = '<p class="muted">Fehler beim Laden der Bibliotheken. Ist Plex verbunden?</p>';
-        document.getElementById("podcast-libraries").innerHTML = '<p class="muted">Fehler beim Laden der Bibliotheken.</p>';
     }
 }
 
@@ -146,9 +202,12 @@ function renderLibraryList(containerId, libs, selectedKeys, prefix) {
         return;
     }
 
+    // Normalize selectedKeys to strings for comparison
+    const selectedStrKeys = selectedKeys.map((k) => String(k));
+
     container.innerHTML = libs
         .map((lib) => {
-            const checked = selectedKeys.includes(lib.key) ? "checked" : "";
+            const checked = selectedStrKeys.includes(String(lib.key)) ? "checked" : "";
             const selectedClass = checked ? "selected" : "";
             return `
                 <label class="library-item ${selectedClass}">
@@ -192,6 +251,138 @@ async function testConnection() {
         }
     } catch (e) {
         showResult("connection-result", false, "Fehler: " + e.message);
+    }
+}
+
+// --- Podcasts ---
+
+async function searchPodcasts() {
+    const query = document.getElementById("podcast-search-input").value.trim();
+    if (!query) return;
+
+    const container = document.getElementById("podcast-search-results");
+    container.innerHTML = '<p class="muted"><span class="spinner"></span> Suche...</p>';
+
+    try {
+        const res = await fetch("/api/podcasts/search?q=" + encodeURIComponent(query));
+        const results = await res.json();
+
+        if (results.length === 0) {
+            container.innerHTML = '<p class="muted">Keine Podcasts gefunden</p>';
+            return;
+        }
+
+        container.innerHTML = results
+            .map((p) => `
+                <div class="podcast-result">
+                    <img class="podcast-art" src="${p.artwork}" alt="" onerror="this.style.display='none'">
+                    <div class="podcast-info">
+                        <div class="podcast-name">${escapeHtml(p.name)}</div>
+                        <div class="podcast-artist">${escapeHtml(p.artist)}</div>
+                        <div class="podcast-genre">${escapeHtml(p.genre)}</div>
+                    </div>
+                    <button class="btn btn-primary btn-small" onclick='subscribePodcast(${JSON.stringify(p).replace(/'/g, "&#39;")})'>
+                        Abonnieren
+                    </button>
+                </div>
+            `)
+            .join("");
+    } catch (e) {
+        container.innerHTML = '<p class="muted">Fehler bei der Suche</p>';
+    }
+}
+
+async function subscribePodcast(podcast) {
+    try {
+        const res = await fetch("/api/podcasts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(podcast),
+        });
+        const data = await res.json();
+        if (data.success) {
+            loadSubscribedPodcasts();
+            // Visual feedback
+            document.getElementById("podcast-search-results").innerHTML =
+                '<div class="result-box success">\"' + escapeHtml(podcast.name) + '\" abonniert!</div>';
+        }
+    } catch (e) {
+        console.error("Subscribe failed:", e);
+    }
+}
+
+async function loadSubscribedPodcasts() {
+    try {
+        const res = await fetch("/api/podcasts");
+        const podcasts = await res.json();
+        const container = document.getElementById("subscribed-podcasts");
+
+        if (podcasts.length === 0) {
+            container.innerHTML = '<p class="muted">Noch keine Podcasts abonniert. Nutze die Suche oben!</p>';
+            return;
+        }
+
+        container.innerHTML = podcasts
+            .map((p) => `
+                <div class="podcast-item ${p.enabled ? "" : "disabled"}">
+                    <img class="podcast-art-sm" src="${p.artwork}" alt="" onerror="this.style.display='none'">
+                    <div class="podcast-info">
+                        <div class="podcast-name">${escapeHtml(p.name)}</div>
+                        <div class="podcast-artist">${escapeHtml(p.artist)}</div>
+                    </div>
+                    <div class="podcast-actions">
+                        <button class="btn btn-small btn-secondary" onclick="togglePodcast(${p.id}, ${!p.enabled})">
+                            ${p.enabled ? "Deaktivieren" : "Aktivieren"}
+                        </button>
+                        <button class="btn btn-small btn-danger" onclick="removePodcast(${p.id}, '${escapeHtml(p.name)}')">
+                            Entfernen
+                        </button>
+                    </div>
+                </div>
+            `)
+            .join("");
+    } catch {
+        document.getElementById("subscribed-podcasts").innerHTML = '<p class="muted">Fehler beim Laden</p>';
+    }
+}
+
+async function togglePodcast(id, enabled) {
+    try {
+        await fetch(`/api/podcasts/${id}/toggle`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ enabled }),
+        });
+        loadSubscribedPodcasts();
+    } catch (e) {
+        console.error("Toggle failed:", e);
+    }
+}
+
+async function removePodcast(id, name) {
+    if (!confirm(`Podcast "${name}" wirklich entfernen?`)) return;
+    try {
+        await fetch(`/api/podcasts/${id}`, { method: "DELETE" });
+        loadSubscribedPodcasts();
+    } catch (e) {
+        console.error("Remove failed:", e);
+    }
+}
+
+async function refreshPodcasts() {
+    const btn = document.getElementById("refresh-podcasts-btn");
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Lade Episoden...';
+
+    try {
+        const res = await fetch("/api/podcasts/refresh", { method: "POST" });
+        const data = await res.json();
+        showResult("refresh-result", true, `${data.downloaded} neue Episoden heruntergeladen`);
+    } catch (e) {
+        showResult("refresh-result", false, "Fehler: " + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "Jetzt neue Episoden laden";
     }
 }
 
@@ -241,7 +432,7 @@ async function loadPlaylists() {
             .map(
                 (p) => `
                 <div class="playlist-item">
-                    <span class="name">${p.title}</span>
+                    <span class="name">${escapeHtml(p.title)}</span>
                     <span class="meta">${p.item_count} Titel</span>
                 </div>
             `
@@ -281,11 +472,11 @@ async function loadHistory() {
                         .map(
                             (h) => `
                         <tr>
-                            <td>${h.name}</td>
+                            <td>${escapeHtml(h.name)}</td>
                             <td>${h.music_count}</td>
                             <td>${h.podcast_count}</td>
                             <td>${h.track_count}</td>
-                            <td>${h.created_at}</td>
+                            <td>${escapeHtml(h.created_at)}</td>
                         </tr>
                     `
                         )
@@ -316,4 +507,11 @@ function showResult(elementId, success, message) {
     const el = document.getElementById(elementId);
     el.className = "result-box " + (success ? "success" : "error");
     el.textContent = message;
+}
+
+function escapeHtml(text) {
+    if (!text) return "";
+    const div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
 }

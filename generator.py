@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import random
 from datetime import datetime, timedelta
 
@@ -18,41 +19,27 @@ def generate_playlist():
         return None
 
     music_libraries = json.loads(settings.get("music_libraries", "[]"))
-    podcast_libraries = json.loads(settings.get("podcast_libraries", "[]"))
     music_count = int(settings.get("music_count", "20"))
     podcast_count = int(settings.get("podcast_count", "3"))
     prefix = settings.get("playlist_prefix", "Daily Drive")
-    recent_only = settings.get("podcast_recent_only", "true") == "true"
-    unplayed_only = settings.get("podcast_unplayed_only", "true") == "true"
+    podcast_download_path = settings.get("podcast_download_path", "/podcasts")
 
-    if not music_libraries and not podcast_libraries:
-        logger.warning("No libraries configured - skipping generation")
+    if not music_libraries:
+        logger.warning("No music libraries configured - skipping generation")
         return None
 
-    # Collect music tracks
+    # Collect music tracks from Plex
     music_tracks = []
-    if music_libraries:
-        tracks_per_lib = max(1, music_count // len(music_libraries))
-        remainder = music_count % len(music_libraries)
-        for i, lib_key in enumerate(music_libraries):
-            count = tracks_per_lib + (1 if i < remainder else 0)
-            tracks = plex_client.get_random_tracks(lib_key, count=count)
-            music_tracks.extend(tracks)
+    tracks_per_lib = max(1, music_count // len(music_libraries))
+    remainder = music_count % len(music_libraries)
+    for i, lib_key in enumerate(music_libraries):
+        count = tracks_per_lib + (1 if i < remainder else 0)
+        tracks = plex_client.get_random_tracks(lib_key, count=count)
+        music_tracks.extend(tracks)
 
-    # Collect podcast episodes
-    podcast_episodes = []
-    if podcast_libraries:
-        eps_per_lib = max(1, podcast_count // len(podcast_libraries))
-        remainder = podcast_count % len(podcast_libraries)
-        for i, lib_key in enumerate(podcast_libraries):
-            count = eps_per_lib + (1 if i < remainder else 0)
-            episodes = plex_client.get_podcast_episodes(
-                lib_key,
-                recent_only=recent_only,
-                unplayed_only=unplayed_only,
-                count=count,
-            )
-            podcast_episodes.extend(episodes)
+    # Collect podcast episodes from Plex library
+    # Find podcast files in the podcast download folder through Plex
+    podcast_episodes = _get_podcast_tracks_from_plex(podcast_download_path, podcast_count)
 
     if not music_tracks and not podcast_episodes:
         logger.warning("No tracks or episodes found - skipping generation")
@@ -98,6 +85,51 @@ def generate_playlist():
         }
 
     return None
+
+
+def _get_podcast_tracks_from_plex(download_path, count):
+    """Try to find downloaded podcast episodes in Plex libraries.
+
+    Searches all music libraries for tracks that match podcast download paths.
+    Falls back to finding the newest mp3 files in the download folder.
+    """
+    try:
+        server = plex_client.get_server()
+        # Search all libraries for recently added podcast tracks
+        podcast_tracks = []
+        for section in server.library.sections():
+            if section.type != "artist":
+                continue
+            try:
+                # Search for recently added tracks, sorted by date added
+                tracks = section.searchTracks(
+                    sort="addedAt:desc",
+                    maxresults=count * 5,
+                )
+                for track in tracks:
+                    # Check if the track's file is in the podcast download path
+                    for media in track.media:
+                        for part in media.parts:
+                            if download_path in part.file:
+                                podcast_tracks.append(track)
+                                break
+                    if len(podcast_tracks) >= count:
+                        break
+                if len(podcast_tracks) >= count:
+                    break
+            except Exception as e:
+                logger.debug("Error searching section %s: %s", section.title, e)
+                continue
+
+        if podcast_tracks:
+            logger.info("Found %d podcast tracks in Plex", len(podcast_tracks))
+            return podcast_tracks[:count]
+
+        logger.info("No podcast tracks found in Plex libraries")
+        return []
+    except Exception as e:
+        logger.exception("Failed to get podcast tracks from Plex")
+        return []
 
 
 def _interleave(music_tracks, podcast_episodes):

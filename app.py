@@ -6,6 +6,7 @@ from flask import Flask, jsonify, render_template, request
 
 import database as db
 import plex_client
+import podcasts
 import scheduler
 from generator import generate_playlist
 
@@ -38,11 +39,13 @@ def index():
 def api_status():
     conn = plex_client.test_connection()
     next_run = scheduler.get_next_run()
+    next_runs = scheduler.get_next_runs()
     settings = db.get_all_settings()
     return jsonify(
         {
             "plex": conn,
             "next_run": next_run,
+            "next_runs": next_runs,
             "enabled": settings.get("enabled") == "true",
         }
     )
@@ -68,12 +71,13 @@ def api_save_settings():
         "podcast_count",
         "music_libraries",
         "podcast_libraries",
-        "schedule_hour",
-        "schedule_minute",
+        "schedules",
         "enabled",
         "keep_days",
         "podcast_recent_only",
         "podcast_unplayed_only",
+        "podcast_download_path",
+        "podcast_max_episodes",
     }
 
     to_save = {}
@@ -90,8 +94,8 @@ def api_save_settings():
     if "plex_url" in data or "plex_token" in data:
         plex_client.reset_connection()
 
-    # Reschedule if time changed
-    if "schedule_hour" in data or "schedule_minute" in data:
+    # Reschedule if schedules changed
+    if "schedules" in data:
         scheduler.reschedule()
 
     return jsonify({"success": True})
@@ -134,6 +138,69 @@ def api_test_connection():
     plex_client.reset_connection()
     result = plex_client.test_connection()
     return jsonify(result)
+
+
+# --- Podcast API ---
+
+
+@app.route("/api/podcasts/search")
+def api_podcast_search():
+    query = request.args.get("q", "").strip()
+    if not query:
+        return jsonify([])
+    results = podcasts.search_itunes(query)
+    return jsonify(results)
+
+
+@app.route("/api/podcasts", methods=["GET"])
+def api_get_podcasts():
+    all_podcasts = db.get_podcasts()
+    return jsonify(all_podcasts)
+
+
+@app.route("/api/podcasts", methods=["POST"])
+def api_add_podcast():
+    data = request.get_json()
+    if not data or not data.get("feed_url"):
+        return jsonify({"error": "feed_url required"}), 400
+
+    db.add_podcast(
+        name=data.get("name", "Unknown"),
+        artist=data.get("artist", ""),
+        feed_url=data["feed_url"],
+        artwork=data.get("artwork", ""),
+        genre=data.get("genre", ""),
+    )
+    return jsonify({"success": True})
+
+
+@app.route("/api/podcasts/<int:podcast_id>", methods=["DELETE"])
+def api_remove_podcast(podcast_id):
+    db.remove_podcast(podcast_id)
+    return jsonify({"success": True})
+
+
+@app.route("/api/podcasts/<int:podcast_id>/toggle", methods=["POST"])
+def api_toggle_podcast(podcast_id):
+    data = request.get_json() or {}
+    enabled = data.get("enabled", True)
+    db.toggle_podcast(podcast_id, enabled)
+    return jsonify({"success": True})
+
+
+@app.route("/api/podcasts/refresh", methods=["POST"])
+def api_refresh_podcasts():
+    count = podcasts.refresh_podcasts()
+    return jsonify({"success": True, "downloaded": count})
+
+
+@app.route("/api/podcasts/episodes")
+def api_podcast_episodes():
+    feed_url = request.args.get("feed_url", "")
+    if not feed_url:
+        return jsonify([])
+    episodes = podcasts.get_feed_episodes(feed_url, limit=10)
+    return jsonify(episodes)
 
 
 def create_app():

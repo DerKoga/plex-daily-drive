@@ -8,11 +8,10 @@ services:
     environment:
       - PLEX_URL=http://plex:32400        # Plex Server URL
       - PLEX_TOKEN=your-plex-token-here   # Plex Token (https://support.plex.tv/articles/204059436/)
-      - SCHEDULE_HOUR=6                   # Uhrzeit der taeglichen Generierung (Stunde)
-      - SCHEDULE_MINUTE=0                 # Uhrzeit der taeglichen Generierung (Minute)
       - TZ=Europe/Berlin                  # Zeitzone
     volumes:
       - plex-daily-drive-data:/data
+      - /mnt/user/media/podcasts:/podcasts  # Podcast-Download-Ordner (an Plex-Mediathek anpassen!)
 
 volumes:
   plex-daily-drive-data:

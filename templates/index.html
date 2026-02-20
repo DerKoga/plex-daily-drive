@@ -34,6 +34,7 @@
         <!-- Tabs -->
         <nav class="tabs">
             <button class="tab active" data-tab="settings">Einstellungen</button>
+            <button class="tab" data-tab="podcasts">Podcasts</button>
             <button class="tab" data-tab="generate">Generieren</button>
             <button class="tab" data-tab="history">Verlauf</button>
         </nav>
@@ -67,12 +68,6 @@
                         <p class="muted">Lade Bibliotheken...</p>
                     </div>
                 </div>
-                <div class="form-group">
-                    <label>Podcast-Bibliotheken</label>
-                    <div id="podcast-libraries" class="library-list">
-                        <p class="muted">Lade Bibliotheken...</p>
-                    </div>
-                </div>
             </div>
 
             <div class="card">
@@ -98,46 +93,59 @@
                     </div>
                 </div>
                 <div class="form-row">
-                    <div class="form-group checkbox-group">
-                        <label>
-                            <input type="checkbox" id="podcast-recent-only" checked>
-                            Nur neueste Podcast-Episoden
-                        </label>
+                    <div class="form-group">
+                        <label for="podcast-download-path">Podcast Download-Pfad</label>
+                        <input type="text" id="podcast-download-path" value="/podcasts">
+                        <small>Ordner in dem Podcast-Episoden gespeichert werden</small>
                     </div>
-                    <div class="form-group checkbox-group">
-                        <label>
-                            <input type="checkbox" id="podcast-unplayed-only" checked>
-                            Nur ungespielte Podcasts
-                        </label>
+                    <div class="form-group">
+                        <label for="podcast-max-episodes">Max. Episoden pro Podcast</label>
+                        <input type="number" id="podcast-max-episodes" value="3" min="1" max="50">
                     </div>
                 </div>
             </div>
 
             <div class="card">
                 <h2>Zeitplan</h2>
-                <div class="form-row">
-                    <div class="form-group checkbox-group">
-                        <label>
-                            <input type="checkbox" id="enabled" checked>
-                            Automatische Generierung aktiviert
-                        </label>
-                    </div>
+                <div class="form-group checkbox-group">
+                    <label>
+                        <input type="checkbox" id="enabled" checked>
+                        Automatische Generierung aktiviert
+                    </label>
                 </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="schedule-hour">Stunde (0-23)</label>
-                        <input type="number" id="schedule-hour" value="6" min="0" max="23">
-                    </div>
-                    <div class="form-group">
-                        <label for="schedule-minute">Minute (0-59)</label>
-                        <input type="number" id="schedule-minute" value="0" min="0" max="59">
-                    </div>
+                <div class="form-group">
+                    <label>Generierungszeiten</label>
+                    <div id="schedules-list"></div>
+                    <button class="btn btn-secondary btn-small" onclick="addSchedule()" style="margin-top: 8px">+ Zeit hinzuf&uuml;gen</button>
                 </div>
             </div>
 
             <div class="actions">
                 <button class="btn btn-primary" onclick="saveSettings()">Einstellungen speichern</button>
                 <div id="save-result" class="result-box hidden"></div>
+            </div>
+        </div>
+
+        <!-- Podcasts Tab -->
+        <div class="tab-content" id="tab-podcasts">
+            <div class="card">
+                <h2>Podcast suchen</h2>
+                <div class="search-field">
+                    <input type="text" id="podcast-search-input" placeholder="Podcast Name eingeben...">
+                    <button class="btn btn-primary" onclick="searchPodcasts()">Suchen</button>
+                </div>
+                <div id="podcast-search-results"></div>
+            </div>
+
+            <div class="card">
+                <h2>Abonnierte Podcasts</h2>
+                <div id="subscribed-podcasts">
+                    <p class="muted">Lade...</p>
+                </div>
+                <button class="btn btn-secondary" onclick="refreshPodcasts()" id="refresh-podcasts-btn" style="margin-top: 12px">
+                    Jetzt neue Episoden laden
+                </button>
+                <div id="refresh-result" class="result-box hidden"></div>
             </div>
         </div>
 
