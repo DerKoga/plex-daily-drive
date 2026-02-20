@@ -1,0 +1,18 @@
+services:
+  plex-daily-drive:
+    build: .
+    container_name: plex-daily-drive
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - PLEX_URL=http://plex:32400        # Plex Server URL
+      - PLEX_TOKEN=your-plex-token-here   # Plex Token (https://support.plex.tv/articles/204059436/)
+      - SCHEDULE_HOUR=6                   # Uhrzeit der taeglichen Generierung (Stunde)
+      - SCHEDULE_MINUTE=0                 # Uhrzeit der taeglichen Generierung (Minute)
+      - TZ=Europe/Berlin                  # Zeitzone
+    volumes:
+      - plex-daily-drive-data:/data
+
+volumes:
+  plex-daily-drive-data:

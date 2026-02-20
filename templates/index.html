@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plex Daily Drive</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>&#9654; Plex Daily Drive</h1>
+            <p class="subtitle">Automatische Playlist-Erstellung &mdash; Musik &amp; Podcasts gemischt</p>
+        </header>
+
+        <!-- Status Bar -->
+        <div class="card status-card" id="status-card">
+            <div class="status-grid">
+                <div class="status-item">
+                    <span class="status-label">Plex Server</span>
+                    <span class="status-value" id="plex-status">Verbinde...</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Scheduler</span>
+                    <span class="status-value" id="scheduler-status">--</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">N&auml;chste Ausf&uuml;hrung</span>
+                    <span class="status-value" id="next-run">--</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <nav class="tabs">
+            <button class="tab active" data-tab="settings">Einstellungen</button>
+            <button class="tab" data-tab="generate">Generieren</button>
+            <button class="tab" data-tab="history">Verlauf</button>
+        </nav>
+
+        <!-- Settings Tab -->
+        <div class="tab-content active" id="tab-settings">
+            <div class="card">
+                <h2>Plex Verbindung</h2>
+                <div class="form-group">
+                    <label>Plex URL</label>
+                    <input type="text" id="plex-url" placeholder="http://localhost:32400" readonly
+                           title="Via Umgebungsvariable PLEX_URL konfiguriert">
+                    <small>Konfiguriert via Umgebungsvariable PLEX_URL</small>
+                </div>
+                <div class="form-group">
+                    <label>Plex Token</label>
+                    <input type="password" id="plex-token" placeholder="****" readonly
+                           title="Via Umgebungsvariable PLEX_TOKEN konfiguriert">
+                    <small>Konfiguriert via Umgebungsvariable PLEX_TOKEN</small>
+                </div>
+                <button class="btn btn-secondary" onclick="testConnection()">Verbindung testen</button>
+                <div id="connection-result" class="result-box hidden"></div>
+            </div>
+
+            <div class="card">
+                <h2>Bibliotheken</h2>
+                <div class="form-group">
+                    <label>Musik-Bibliotheken</label>
+                    <div id="music-libraries" class="library-list">
+                        <p class="muted">Lade Bibliotheken...</p>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Podcast-Bibliotheken</label>
+                    <div id="podcast-libraries" class="library-list">
+                        <p class="muted">Lade Bibliotheken...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Playlist-Konfiguration</h2>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="playlist-prefix">Playlist-Name Prefix</label>
+                        <input type="text" id="playlist-prefix" value="Daily Drive">
+                    </div>
+                    <div class="form-group">
+                        <label for="keep-days">Aufbewahren (Tage)</label>
+                        <input type="number" id="keep-days" value="7" min="1" max="365">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="music-count">Anzahl Musiktitel</label>
+                        <input type="number" id="music-count" value="20" min="0" max="200">
+                    </div>
+                    <div class="form-group">
+                        <label for="podcast-count">Anzahl Podcast-Episoden</label>
+                        <input type="number" id="podcast-count" value="3" min="0" max="50">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group checkbox-group">
+                        <label>
+                            <input type="checkbox" id="podcast-recent-only" checked>
+                            Nur neueste Podcast-Episoden
+                        </label>
+                    </div>
+                    <div class="form-group checkbox-group">
+                        <label>
+                            <input type="checkbox" id="podcast-unplayed-only" checked>
+                            Nur ungespielte Podcasts
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Zeitplan</h2>
+                <div class="form-row">
+                    <div class="form-group checkbox-group">
+                        <label>
+                            <input type="checkbox" id="enabled" checked>
+                            Automatische Generierung aktiviert
+                        </label>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="schedule-hour">Stunde (0-23)</label>
+                        <input type="number" id="schedule-hour" value="6" min="0" max="23">
+                    </div>
+                    <div class="form-group">
+                        <label for="schedule-minute">Minute (0-59)</label>
+                        <input type="number" id="schedule-minute" value="0" min="0" max="59">
+                    </div>
+                </div>
+            </div>
+
+            <div class="actions">
+                <button class="btn btn-primary" onclick="saveSettings()">Einstellungen speichern</button>
+                <div id="save-result" class="result-box hidden"></div>
+            </div>
+        </div>
+
+        <!-- Generate Tab -->
+        <div class="tab-content" id="tab-generate">
+            <div class="card center-card">
+                <h2>Playlist jetzt generieren</h2>
+                <p>Erstellt sofort eine neue Daily Drive Playlist mit den aktuellen Einstellungen.</p>
+                <button class="btn btn-primary btn-large" id="generate-btn" onclick="generateNow()">
+                    Jetzt generieren
+                </button>
+                <div id="generate-result" class="result-box hidden"></div>
+            </div>
+
+            <div class="card">
+                <h2>Aktive Playlists</h2>
+                <div id="active-playlists">
+                    <p class="muted">Lade...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- History Tab -->
+        <div class="tab-content" id="tab-history">
+            <div class="card">
+                <h2>Generierungsverlauf</h2>
+                <div id="history-list">
+                    <p class="muted">Lade...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
