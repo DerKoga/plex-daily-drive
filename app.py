@@ -109,6 +109,17 @@ def api_libraries():
 
 @app.route("/api/generate", methods=["POST"])
 def api_generate():
+    import time
+
+    # Refresh podcasts and scan Plex first
+    try:
+        downloaded = podcasts.refresh_podcasts()
+        if downloaded > 0:
+            plex_client.scan_all_music_libraries()
+            time.sleep(30)
+    except Exception as e:
+        logger.exception("Pre-generation podcast refresh failed")
+
     result = generate_playlist()
     if result:
         return jsonify({"success": True, "playlist": result})
@@ -191,6 +202,8 @@ def api_toggle_podcast(podcast_id):
 @app.route("/api/podcasts/refresh", methods=["POST"])
 def api_refresh_podcasts():
     count = podcasts.refresh_podcasts()
+    if count > 0:
+        plex_client.scan_all_music_libraries()
     return jsonify({"success": True, "downloaded": count})
 
 

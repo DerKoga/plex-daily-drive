@@ -30,7 +30,6 @@ def _make_session(url):
     parsed = urlparse(url)
     if parsed.scheme == "https":
         session.verify = False
-        # Suppress InsecureRequestWarning for local Plex servers
         import urllib3
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
     return session
@@ -82,19 +81,10 @@ def get_libraries():
         return []
 
 
-def get_music_libraries():
-    return [lib for lib in get_libraries() if lib["type"] == "artist"]
-
-
-def get_podcast_libraries():
-    return [lib for lib in get_libraries() if lib["type"] == "artist"]
-
-
 def get_random_tracks(library_key, count=20):
     try:
         server = get_server()
         section = server.library.sectionByID(int(library_key))
-        # Search for all tracks and pick random ones
         all_tracks = section.searchTracks(sort="random", maxresults=count)
         return all_tracks
     except Exception as e:
@@ -102,36 +92,75 @@ def get_random_tracks(library_key, count=20):
         return []
 
 
-def get_podcast_episodes(library_key, recent_only=True, unplayed_only=True, count=3):
+def find_tracks_by_artist(artist_name, max_results=5):
+    """Search ALL music libraries for tracks by a specific artist name.
+
+    This is used to find downloaded podcast episodes in Plex by their
+    tagged artist name (= podcast name).
+    """
+    try:
+        server = get_server()
+        found = []
+        for section in server.library.sections():
+            if section.type != "artist":
+                continue
+            try:
+                tracks = section.searchTracks(
+                    **{"artist.title": artist_name},
+                    sort="addedAt:desc",
+                    maxresults=max_results,
+                )
+                found.extend(tracks)
+            except Exception:
+                # Fallback: broader search
+                try:
+                    tracks = section.searchTracks(
+                        title="",
+                        sort="addedAt:desc",
+                        maxresults=max_results * 10,
+                    )
+                    for t in tracks:
+                        if t.grandparentTitle == artist_name or (
+                            hasattr(t, "originalTitle")
+                            and t.originalTitle == artist_name
+                        ):
+                            found.append(t)
+                            if len(found) >= max_results:
+                                break
+                except Exception as inner_e:
+                    logger.debug(
+                        "Fallback search failed for '%s' in %s: %s",
+                        artist_name,
+                        section.title,
+                        inner_e,
+                    )
+        return found
+    except Exception as e:
+        logger.exception("Failed to find tracks by artist '%s'", artist_name)
+        return []
+
+
+def scan_library(library_key):
+    """Trigger a Plex library scan."""
     try:
         server = get_server()
         section = server.library.sectionByID(int(library_key))
-
-        filters = {}
-        sort = "addedAt:desc" if recent_only else "random"
-
-        if unplayed_only:
-            # Get tracks that haven't been fully played
-            episodes = section.searchTracks(
-                sort=sort,
-                maxresults=count * 3,
-                **filters,
-            )
-            # Filter to unplayed episodes
-            unplayed = [ep for ep in episodes if not getattr(ep, "viewCount", 0)]
-            return unplayed[:count]
-        else:
-            episodes = section.searchTracks(
-                sort=sort,
-                maxresults=count,
-                **filters,
-            )
-            return list(episodes)
+        section.update()
+        logger.info("Triggered scan for library: %s", section.title)
     except Exception as e:
-        logger.exception(
-            "Failed to get podcast episodes from library %s", library_key
-        )
-        return []
+        logger.exception("Failed to scan library %s", library_key)
+
+
+def scan_all_music_libraries():
+    """Trigger a scan on all music libraries."""
+    try:
+        server = get_server()
+        for section in server.library.sections():
+            if section.type == "artist":
+                section.update()
+                logger.info("Triggered scan for library: %s", section.title)
+    except Exception as e:
+        logger.exception("Failed to scan music libraries")
 
 
 def create_playlist(name, items):

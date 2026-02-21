@@ -52,23 +52,11 @@ def get_feed_episodes(feed_url, limit=5):
         feed = feedparser.parse(feed_url)
         episodes = []
         for entry in feed.entries[:limit]:
-            audio_url = None
-            duration = None
-            for link in entry.get("links", []):
-                if link.get("type", "").startswith("audio/") or link.get("href", "").endswith(".mp3"):
-                    audio_url = link["href"]
-                    break
-            # Fallback: check enclosures
-            if not audio_url:
-                for enc in entry.get("enclosures", []):
-                    if enc.get("type", "").startswith("audio/") or enc.get("href", "").endswith(".mp3"):
-                        audio_url = enc.get("href") or enc.get("url")
-                        break
-
+            audio_url = _extract_audio_url(entry)
             if not audio_url:
                 continue
 
-            # Parse duration
+            duration = None
             duration_str = entry.get("itunes_duration", "")
             if duration_str:
                 duration = _parse_duration(duration_str)
@@ -90,6 +78,13 @@ def get_feed_episodes(feed_url, limit=5):
         return []
 
 
+def get_todays_episodes(feed_url):
+    """Get only episodes published today from a feed."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    episodes = get_feed_episodes(feed_url, limit=10)
+    return [ep for ep in episodes if ep["published"] == today]
+
+
 def download_episode(podcast_name, episode, base_path):
     """Download a podcast episode to the specified path."""
     podcast_dir = os.path.join(base_path, _sanitize_filename(podcast_name))
@@ -103,11 +98,10 @@ def download_episode(podcast_name, episode, base_path):
         return filepath
 
     try:
-        logger.info("Downloading: %s", episode["title"])
+        logger.info("Downloading: %s - %s", podcast_name, episode["title"])
         resp = requests.get(episode["url"], stream=True, timeout=300)
         resp.raise_for_status()
 
-        # Write to temp file first
         temp_path = filepath + ".tmp"
         with open(temp_path, "wb") as f:
             for chunk in resp.iter_content(chunk_size=8192):
@@ -115,14 +109,12 @@ def download_episode(podcast_name, episode, base_path):
 
         os.rename(temp_path, filepath)
 
-        # Tag the MP3
         _tag_mp3(filepath, podcast_name, episode)
 
         logger.info("Downloaded: %s", filepath)
         return filepath
     except Exception as e:
         logger.exception("Failed to download episode: %s", episode["title"])
-        # Clean up temp file
         temp_path = filepath + ".tmp"
         if os.path.exists(temp_path):
             os.remove(temp_path)
@@ -130,7 +122,7 @@ def download_episode(podcast_name, episode, base_path):
 
 
 def refresh_podcasts():
-    """Check all subscribed podcasts for new episodes and download them."""
+    """Check all subscribed podcasts for today's episodes and download them."""
     podcasts = db.get_podcasts()
     download_path = db.get_setting("podcast_download_path", "/podcasts")
     max_episodes = int(db.get_setting("podcast_max_episodes", "3"))
@@ -140,13 +132,18 @@ def refresh_podcasts():
         if not podcast["enabled"]:
             continue
 
-        logger.info("Checking podcast: %s", podcast["name"])
-        episodes = get_feed_episodes(podcast["feed_url"], limit=max_episodes)
+        logger.info("Checking podcast for today's episodes: %s", podcast["name"])
+        todays = get_todays_episodes(podcast["feed_url"])
 
-        for episode in episodes:
-            result = download_episode(podcast["name"], episode, download_path)
-            if result:
-                total_downloaded += 1
+        if not todays:
+            logger.info("No episode today for: %s", podcast["name"])
+            continue
+
+        # Download only the latest episode from today
+        episode = todays[0]
+        result = download_episode(podcast["name"], episode, download_path)
+        if result:
+            total_downloaded += 1
 
         # Clean up old episodes beyond max
         _cleanup_old_episodes(podcast["name"], download_path, max_episodes)
@@ -155,6 +152,27 @@ def refresh_podcasts():
         logger.info("Downloaded %d new episodes total", total_downloaded)
 
     return total_downloaded
+
+
+def get_subscribed_podcast_names():
+    """Return list of enabled podcast names."""
+    podcasts = db.get_podcasts()
+    return [p["name"] for p in podcasts if p["enabled"]]
+
+
+def _extract_audio_url(entry):
+    """Extract audio URL from a feed entry."""
+    for link in entry.get("links", []):
+        href = link.get("href", "")
+        ltype = link.get("type", "")
+        if ltype.startswith("audio/") or href.split("?")[0].endswith(".mp3"):
+            return href
+    for enc in entry.get("enclosures", []):
+        ltype = enc.get("type", "")
+        href = enc.get("href") or enc.get("url", "")
+        if ltype.startswith("audio/") or href.split("?")[0].endswith(".mp3"):
+            return href
+    return None
 
 
 def _cleanup_old_episodes(podcast_name, base_path, max_keep):
@@ -169,7 +187,6 @@ def _cleanup_old_episodes(podcast_name, base_path, max_keep):
             path = os.path.join(podcast_dir, f)
             files.append((path, os.path.getmtime(path)))
 
-    # Sort by modification time, newest first
     files.sort(key=lambda x: x[1], reverse=True)
 
     for path, _ in files[max_keep:]:

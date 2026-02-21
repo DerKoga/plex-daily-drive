@@ -1,11 +1,12 @@
 import json
 import logging
-import os
 import random
+import time
 from datetime import datetime, timedelta
 
 import database as db
 import plex_client
+from podcasts import get_subscribed_podcast_names, get_todays_episodes, refresh_podcasts
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,6 @@ def generate_playlist():
     music_count = int(settings.get("music_count", "20"))
     podcast_count = int(settings.get("podcast_count", "3"))
     prefix = settings.get("playlist_prefix", "Daily Drive")
-    podcast_download_path = settings.get("podcast_download_path", "/podcasts")
 
     if not music_libraries:
         logger.warning("No music libraries configured - skipping generation")
@@ -37,9 +37,8 @@ def generate_playlist():
         tracks = plex_client.get_random_tracks(lib_key, count=count)
         music_tracks.extend(tracks)
 
-    # Collect podcast episodes from Plex library
-    # Find podcast files in the podcast download folder through Plex
-    podcast_episodes = _get_podcast_tracks_from_plex(podcast_download_path, podcast_count)
+    # Collect today's podcast episodes from Plex
+    podcast_episodes = _get_todays_podcast_tracks(podcast_count)
 
     if not music_tracks and not podcast_episodes:
         logger.warning("No tracks or episodes found - skipping generation")
@@ -87,49 +86,63 @@ def generate_playlist():
     return None
 
 
-def _get_podcast_tracks_from_plex(download_path, count):
-    """Try to find downloaded podcast episodes in Plex libraries.
+def _get_todays_podcast_tracks(max_count):
+    """Find today's podcast episodes in Plex.
 
-    Searches all music libraries for tracks that match podcast download paths.
-    Falls back to finding the newest mp3 files in the download folder.
+    Strategy:
+    1. Get list of subscribed podcast names from DB
+    2. For each podcast, check RSS if an episode was published today
+    3. If yes, search Plex for that podcast's tracks by artist name
+       (we tag downloads with artist = podcast name)
+    4. Take the most recently added track (= today's download)
     """
-    try:
-        server = plex_client.get_server()
-        # Search all libraries for recently added podcast tracks
-        podcast_tracks = []
-        for section in server.library.sections():
-            if section.type != "artist":
-                continue
-            try:
-                # Search for recently added tracks, sorted by date added
-                tracks = section.searchTracks(
-                    sort="addedAt:desc",
-                    maxresults=count * 5,
-                )
-                for track in tracks:
-                    # Check if the track's file is in the podcast download path
-                    for media in track.media:
-                        for part in media.parts:
-                            if download_path in part.file:
-                                podcast_tracks.append(track)
-                                break
-                    if len(podcast_tracks) >= count:
-                        break
-                if len(podcast_tracks) >= count:
-                    break
-            except Exception as e:
-                logger.debug("Error searching section %s: %s", section.title, e)
-                continue
-
-        if podcast_tracks:
-            logger.info("Found %d podcast tracks in Plex", len(podcast_tracks))
-            return podcast_tracks[:count]
-
-        logger.info("No podcast tracks found in Plex libraries")
+    podcast_names = get_subscribed_podcast_names()
+    if not podcast_names:
+        logger.info("No subscribed podcasts")
         return []
-    except Exception as e:
-        logger.exception("Failed to get podcast tracks from Plex")
-        return []
+
+    subscribed_podcasts = db.get_podcasts()
+    today_tracks = []
+
+    for podcast in subscribed_podcasts:
+        if not podcast["enabled"]:
+            continue
+
+        # Check RSS: did this podcast publish today?
+        todays_episodes = get_todays_episodes(podcast["feed_url"])
+        if not todays_episodes:
+            logger.info("No episode today for: %s", podcast["name"])
+            continue
+
+        logger.info(
+            "Podcast '%s' has %d episode(s) today, searching Plex...",
+            podcast["name"],
+            len(todays_episodes),
+        )
+
+        # Find this podcast's tracks in Plex by artist name
+        tracks = plex_client.find_tracks_by_artist(podcast["name"], max_results=3)
+        if tracks:
+            # Take the most recently added one (should be today's episode)
+            today_tracks.append(tracks[0])
+            logger.info(
+                "Found Plex track for '%s': %s",
+                podcast["name"],
+                tracks[0].title,
+            )
+        else:
+            logger.warning(
+                "Podcast '%s' has today's episode but not found in Plex. "
+                "Make sure the podcast download folder is in a Plex music library "
+                "and Plex has scanned it.",
+                podcast["name"],
+            )
+
+        if len(today_tracks) >= max_count:
+            break
+
+    logger.info("Found %d podcast tracks for today", len(today_tracks))
+    return today_tracks
 
 
 def _interleave(music_tracks, podcast_episodes):
@@ -144,20 +157,17 @@ def _interleave(music_tracks, podcast_episodes):
         return list(podcast_episodes)
 
     random.shuffle(music_tracks)
-    random.shuffle(podcast_episodes)
+    # Don't shuffle podcasts - keep them in order
 
     result = []
     num_podcasts = len(podcast_episodes)
-    # Split music into (num_podcasts + 1) roughly equal blocks
     block_size = max(1, len(music_tracks) // (num_podcasts + 1))
 
     music_idx = 0
     for i, episode in enumerate(podcast_episodes):
-        # Add a block of music
         end = min(music_idx + block_size, len(music_tracks))
         result.extend(music_tracks[music_idx:end])
         music_idx = end
-        # Add the podcast episode
         result.append(episode)
 
     # Add remaining music tracks
@@ -176,7 +186,6 @@ def _cleanup_old_playlists(prefix, keep_days):
         for playlist in server.playlists():
             if not playlist.title.startswith(prefix + " - "):
                 continue
-            # Extract date from playlist name
             date_part = playlist.title.replace(prefix + " - ", "")
             try:
                 if date_part < cutoff_str:

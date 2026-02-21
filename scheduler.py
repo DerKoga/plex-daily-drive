@@ -1,10 +1,12 @@
 import json
 import logging
+import time
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 import database as db
+import plex_client
 from generator import generate_playlist
 from podcasts import refresh_podcasts
 
@@ -12,7 +14,6 @@ logger = logging.getLogger(__name__)
 
 _scheduler = None
 JOB_PREFIX = "daily_drive_"
-PODCAST_JOB = "podcast_refresh"
 
 
 def get_scheduler():
@@ -40,9 +41,9 @@ def stop_scheduler():
 def _update_jobs():
     scheduler = get_scheduler()
 
-    # Remove all existing daily drive jobs
+    # Remove all existing jobs
     for job in scheduler.get_jobs():
-        if job.id.startswith(JOB_PREFIX) or job.id == PODCAST_JOB:
+        if job.id.startswith(JOB_PREFIX):
             scheduler.remove_job(job.id)
 
     schedules_raw = db.get_setting("schedules", '[{"hour": 6, "minute": 0}]')
@@ -58,9 +59,8 @@ def _update_jobs():
         job_id = f"{JOB_PREFIX}{i}"
         trigger = CronTrigger(hour=hour, minute=minute)
 
-        # Generate playlist job
         scheduler.add_job(
-            _run_generation,
+            _run_full_cycle,
             trigger=trigger,
             id=job_id,
             name=f"Daily Drive {hour:02d}:{minute:02d}",
@@ -68,30 +68,26 @@ def _update_jobs():
         )
         logger.info("Scheduled daily generation at %02d:%02d", hour, minute)
 
-    # Podcast refresh: run 15 minutes before each playlist generation
-    for i, sched in enumerate(schedules):
-        hour = int(sched.get("hour", 6))
-        minute = int(sched.get("minute", 0)) - 15
-        if minute < 0:
-            minute += 60
-            hour = (hour - 1) % 24
 
-        scheduler.add_job(
-            refresh_podcasts,
-            trigger=CronTrigger(hour=hour, minute=minute),
-            id=f"{PODCAST_JOB}_{i}",
-            name=f"Podcast Refresh {hour:02d}:{minute:02d}",
-            replace_existing=True,
-        )
-        logger.info("Scheduled podcast refresh at %02d:%02d", hour, minute)
-
-
-def _run_generation():
-    """Refresh podcasts first, then generate the playlist."""
+def _run_full_cycle():
+    """Full cycle: refresh podcasts, scan Plex, wait, then generate playlist."""
     try:
-        refresh_podcasts()
+        # 1. Download today's podcast episodes
+        downloaded = refresh_podcasts()
+        logger.info("Podcast refresh done, %d downloaded", downloaded)
+
+        # 2. If new episodes were downloaded, trigger Plex library scan and wait
+        if downloaded > 0:
+            logger.info("Triggering Plex library scan for new episodes...")
+            plex_client.scan_all_music_libraries()
+            # Wait for Plex to scan and index the new files
+            time.sleep(60)
+            logger.info("Plex scan wait complete")
+
     except Exception as e:
-        logger.exception("Podcast refresh failed before generation")
+        logger.exception("Podcast refresh/scan failed before generation")
+
+    # 3. Generate the playlist
     generate_playlist()
 
 
