@@ -1,5 +1,6 @@
 import logging
 import os
+import random
 from urllib.parse import urlparse
 
 import requests
@@ -91,6 +92,79 @@ def get_random_tracks(library_key, count=20):
     except Exception as e:
         logger.exception("Failed to get random tracks from library %s", library_key)
         return []
+
+
+def get_favorite_tracks(library_key, count=10):
+    """Get frequently played / highly rated tracks from a library.
+
+    Fetches the most-played tracks and randomly samples from them
+    to add variety while staying within the user's favorites.
+    Falls back to random tracks if no play history exists.
+    """
+    try:
+        server = get_server()
+        section = server.library.sectionByID(int(library_key))
+        pool_size = count * 5
+
+        # Get most-played tracks
+        played = section.searchTracks(sort="viewCount:desc", maxresults=pool_size)
+
+        # Filter to tracks actually played at least once
+        played = [t for t in played if getattr(t, "viewCount", 0) and t.viewCount > 0]
+
+        if not played:
+            logger.info("No play history in library %s, falling back to random", library_key)
+            return get_random_tracks(library_key, count)
+
+        # Randomly sample from the favorites pool
+        sample_size = min(count, len(played))
+        selected = random.sample(played, sample_size)
+        logger.debug("Selected %d favorites from %d played tracks (library %s)",
+                      len(selected), len(played), library_key)
+        return selected
+    except Exception as e:
+        logger.exception("Failed to get favorite tracks from library %s", library_key)
+        return get_random_tracks(library_key, count)
+
+
+def get_discovery_tracks(library_key, count=10):
+    """Get tracks the user hasn't listened to yet.
+
+    Fetches recently added tracks that have never been played.
+    Falls back to random tracks if not enough unplayed tracks exist.
+    """
+    try:
+        server = get_server()
+        section = server.library.sectionByID(int(library_key))
+        pool_size = count * 10
+
+        # Get recently added tracks
+        recent = section.searchTracks(sort="addedAt:desc", maxresults=pool_size)
+
+        # Filter to unplayed tracks (viewCount == 0 or None)
+        unplayed = [t for t in recent if not getattr(t, "viewCount", 0)]
+
+        if len(unplayed) < count:
+            # Try a larger random pool to find more unplayed tracks
+            random_pool = section.searchTracks(sort="random", maxresults=pool_size)
+            for t in random_pool:
+                if not getattr(t, "viewCount", 0) and t not in unplayed:
+                    unplayed.append(t)
+                    if len(unplayed) >= count * 3:
+                        break
+
+        if not unplayed:
+            logger.info("No unplayed tracks in library %s, falling back to random", library_key)
+            return get_random_tracks(library_key, count)
+
+        sample_size = min(count, len(unplayed))
+        selected = random.sample(unplayed, sample_size)
+        logger.debug("Selected %d discoveries from %d unplayed tracks (library %s)",
+                      len(selected), len(unplayed), library_key)
+        return selected
+    except Exception as e:
+        logger.exception("Failed to get discovery tracks from library %s", library_key)
+        return get_random_tracks(library_key, count)
 
 
 def find_tracks_by_artist(artist_name, max_results=5):

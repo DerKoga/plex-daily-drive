@@ -68,6 +68,7 @@ def init_db():
             "podcast_download_path": "/podcasts",
             "podcast_max_episodes": "3",
             "playlist_description": "",
+            "discovery_ratio": "40",
         }
         for key, value in defaults.items():
             conn.execute(

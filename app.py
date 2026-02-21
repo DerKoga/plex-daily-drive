@@ -79,6 +79,7 @@ def api_save_settings():
         "podcast_download_path",
         "podcast_max_episodes",
         "playlist_description",
+        "discovery_ratio",
     }
 
     to_save = {}

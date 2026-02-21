@@ -28,14 +28,35 @@ def generate_playlist():
         logger.warning("No music libraries configured - skipping generation")
         return None
 
-    # Collect music tracks from Plex
+    # Smart music selection: split between favorites and discoveries
+    discovery_ratio = int(settings.get("discovery_ratio", "40"))
+    discovery_ratio = max(0, min(100, discovery_ratio))  # clamp 0-100
+    discovery_count = round(music_count * discovery_ratio / 100)
+    favorites_count = music_count - discovery_count
+
     music_tracks = []
-    tracks_per_lib = max(1, music_count // len(music_libraries))
-    remainder = music_count % len(music_libraries)
-    for i, lib_key in enumerate(music_libraries):
-        count = tracks_per_lib + (1 if i < remainder else 0)
-        tracks = plex_client.get_random_tracks(lib_key, count=count)
-        music_tracks.extend(tracks)
+    num_libs = len(music_libraries)
+
+    # Collect favorites (frequently played tracks)
+    if favorites_count > 0:
+        fav_per_lib = max(1, favorites_count // num_libs)
+        fav_remainder = favorites_count % num_libs
+        for i, lib_key in enumerate(music_libraries):
+            count = fav_per_lib + (1 if i < fav_remainder else 0)
+            tracks = plex_client.get_favorite_tracks(lib_key, count=count)
+            music_tracks.extend(tracks)
+
+    # Collect discoveries (unplayed / new tracks)
+    if discovery_count > 0:
+        disc_per_lib = max(1, discovery_count // num_libs)
+        disc_remainder = discovery_count % num_libs
+        for i, lib_key in enumerate(music_libraries):
+            count = disc_per_lib + (1 if i < disc_remainder else 0)
+            tracks = plex_client.get_discovery_tracks(lib_key, count=count)
+            music_tracks.extend(tracks)
+
+    logger.info("Music selection: %d favorites + %d discoveries (ratio %d%%)",
+                favorites_count, discovery_count, discovery_ratio)
 
     # Collect today's podcast episodes from Plex
     podcast_episodes = _get_todays_podcast_tracks(podcast_count)

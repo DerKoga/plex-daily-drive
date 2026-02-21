@@ -1,5 +1,9 @@
 FROM python:3.11-slim
 
+LABEL org.opencontainers.image.title="Plex Daily Drive"
+LABEL org.opencontainers.image.description="Automatic daily playlist generator mixing music and podcasts for Plex"
+LABEL org.opencontainers.image.source="https://github.com/DerKoga/plex-daily-drive"
+
 WORKDIR /app
 
 COPY requirements.txt .

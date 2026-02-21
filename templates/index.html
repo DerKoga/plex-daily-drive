@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Plex Daily Drive</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -108,6 +109,15 @@
                         <label for="podcast-count">Anzahl Podcast-Episoden</label>
                         <input type="number" id="podcast-count" value="3" min="0" max="50">
                     </div>
+                </div>
+                <div class="form-group">
+                    <label for="discovery-ratio">Anteil Neuentdeckungen: <span id="discovery-ratio-label">40%</span></label>
+                    <div class="slider-row">
+                        <span class="slider-label">Favoriten</span>
+                        <input type="range" id="discovery-ratio" min="0" max="100" value="40" step="5">
+                        <span class="slider-label">Neuentdeckungen</span>
+                    </div>
+                    <small>Verh&auml;ltnis zwischen h&auml;ufig geh&ouml;rten Songs und neuen, ungeh&ouml;rten Titeln</small>
                 </div>
                 <div class="form-group">
                     <label for="playlist-description">Playlist-Beschreibung</label>

@@ -18,6 +18,12 @@ document.addEventListener("DOMContentLoaded", () => {
             if (e.key === "Enter") searchPodcasts();
         });
     }
+
+    // Discovery ratio slider label update
+    const slider = document.getElementById("discovery-ratio");
+    if (slider) {
+        slider.addEventListener("input", updateDiscoveryLabel);
+    }
 });
 
 // --- Tabs ---
@@ -85,6 +91,8 @@ async function loadSettings() {
         document.getElementById("podcast-download-path").value = settings.podcast_download_path || "/podcasts";
         document.getElementById("podcast-max-episodes").value = settings.podcast_max_episodes || "3";
         document.getElementById("playlist-description").value = settings.playlist_description || "";
+        document.getElementById("discovery-ratio").value = settings.discovery_ratio || "40";
+        updateDiscoveryLabel();
         document.getElementById("enabled").checked = settings.enabled === "true";
 
         // Load schedules
@@ -115,6 +123,7 @@ async function saveSettings() {
         podcast_download_path: document.getElementById("podcast-download-path").value,
         podcast_max_episodes: document.getElementById("podcast-max-episodes").value,
         playlist_description: document.getElementById("playlist-description").value,
+        discovery_ratio: document.getElementById("discovery-ratio").value,
         enabled: document.getElementById("enabled").checked ? "true" : "false",
         music_libraries: musicLibs,
         schedules: schedules,
@@ -537,6 +546,11 @@ function refreshCoverPreview() {
 }
 
 // --- Helpers ---
+
+function updateDiscoveryLabel() {
+    const val = document.getElementById("discovery-ratio").value;
+    document.getElementById("discovery-ratio-label").textContent = val + "%";
+}
 
 function toggleToken() {
     const input = document.getElementById("plex-token");
