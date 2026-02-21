@@ -35,6 +35,7 @@
         <!-- Tabs -->
         <nav class="tabs">
             <button class="tab active" data-tab="settings">Einstellungen</button>
+            <button class="tab" data-tab="users">Benutzer</button>
             <button class="tab" data-tab="podcasts">Podcasts</button>
             <button class="tab" data-tab="generate">Generieren</button>
             <button class="tab" data-tab="history">Verlauf</button>
@@ -158,6 +159,111 @@
             </div>
         </div>
 
+        <!-- Users Tab -->
+        <div class="tab-content" id="tab-users">
+            <div class="card">
+                <h2>Neuen Benutzer hinzuf&uuml;gen</h2>
+                <div class="form-group">
+                    <label for="new-user-name">Name</label>
+                    <input type="text" id="new-user-name" placeholder="z.B. Max">
+                </div>
+                <div class="form-group">
+                    <label for="new-user-plex-username">Plex Benutzername</label>
+                    <input type="text" id="new-user-plex-username" placeholder="Plex Home-User Name">
+                    <small>Der Name des Plex-Benutzers (Home User / Managed User). Wiedergaben und Likes werden von diesem Benutzer gezogen.</small>
+                </div>
+                <div class="form-group">
+                    <label for="new-user-plex-token">Plex Token (optional)</label>
+                    <div class="token-field">
+                        <input type="password" id="new-user-plex-token" placeholder="Eigener Token (optional)">
+                        <button type="button" class="btn btn-small btn-secondary" onclick="toggleNewUserToken()">Zeigen</button>
+                    </div>
+                    <small>Nur n&ouml;tig wenn switchUser nicht funktioniert. Leer lassen f&uuml;r automatische Erkennung.</small>
+                </div>
+                <div class="form-group">
+                    <label>Plex-Benutzer auf dem Server</label>
+                    <div id="plex-users-list" class="muted">Lade Plex-Benutzer...</div>
+                </div>
+                <button class="btn btn-primary" onclick="addUser()">Benutzer hinzuf&uuml;gen</button>
+                <div id="add-user-result" class="result-box hidden"></div>
+            </div>
+
+            <div class="card">
+                <h2>Benutzer verwalten</h2>
+                <div id="users-list">
+                    <p class="muted">Lade...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- User Edit Modal -->
+        <div class="modal-overlay hidden" id="user-edit-modal">
+            <div class="modal card">
+                <h2>Benutzer bearbeiten</h2>
+                <input type="hidden" id="edit-user-id">
+
+                <div class="form-group">
+                    <label for="edit-user-name">Name</label>
+                    <input type="text" id="edit-user-name">
+                </div>
+                <div class="form-group">
+                    <label for="edit-user-plex-username">Plex Benutzername</label>
+                    <input type="text" id="edit-user-plex-username">
+                </div>
+                <div class="form-group">
+                    <label for="edit-user-plex-token">Plex Token (optional)</label>
+                    <input type="password" id="edit-user-plex-token" placeholder="Leer = switchUser">
+                </div>
+                <div class="form-group">
+                    <label for="edit-user-prefix">Playlist-Name Prefix</label>
+                    <input type="text" id="edit-user-prefix">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="edit-user-music-count">Musiktitel</label>
+                        <input type="number" id="edit-user-music-count" min="0" max="200">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-user-podcast-count">Podcast-Episoden</label>
+                        <input type="number" id="edit-user-podcast-count" min="0" max="50">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="edit-user-discovery">Neuentdeckungen: <span id="edit-discovery-label">40%</span></label>
+                    <div class="slider-row">
+                        <span class="slider-label">Favoriten</span>
+                        <input type="range" id="edit-user-discovery" min="0" max="100" value="40" step="5"
+                               oninput="document.getElementById('edit-discovery-label').textContent=this.value+'%'">
+                        <span class="slider-label">Neuentdeckungen</span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="edit-user-keep-days">Aufbewahren (Tage)</label>
+                    <input type="number" id="edit-user-keep-days" min="1" max="365">
+                </div>
+
+                <div class="form-group">
+                    <label>Musik-Bibliotheken</label>
+                    <div id="edit-user-libraries" class="library-list">
+                        <p class="muted">Lade...</p>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Podcasts f&uuml;r diesen Benutzer</label>
+                    <div id="edit-user-podcasts" class="library-list">
+                        <p class="muted">Lade...</p>
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button class="btn btn-primary" onclick="saveUser()">Speichern</button>
+                    <button class="btn btn-secondary" onclick="closeUserModal()">Abbrechen</button>
+                </div>
+                <div id="edit-user-result" class="result-box hidden"></div>
+            </div>
+        </div>
+
         <!-- Podcasts Tab -->
         <div class="tab-content" id="tab-podcasts">
             <div class="card">
@@ -185,7 +291,13 @@
         <div class="tab-content" id="tab-generate">
             <div class="card center-card">
                 <h2>Playlist jetzt generieren</h2>
-                <p>Erstellt sofort eine neue Daily Drive Playlist mit den aktuellen Einstellungen.</p>
+                <p>Erstellt sofort eine neue Daily Drive Playlist.</p>
+                <div class="form-group">
+                    <label for="generate-user-select">Benutzer</label>
+                    <select id="generate-user-select" class="form-select">
+                        <option value="">Alle Benutzer / Global</option>
+                    </select>
+                </div>
                 <button class="btn btn-primary btn-large" id="generate-btn" onclick="generateNow()">
                     Jetzt generieren
                 </button>

@@ -7,7 +7,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 import database as db
 import plex_client
-from generator import generate_playlist
+from generator import generate_all_playlists
 from podcasts import refresh_podcasts
 
 logger = logging.getLogger(__name__)
@@ -87,8 +87,8 @@ def _run_full_cycle():
     except Exception as e:
         logger.exception("Podcast refresh/scan failed before generation")
 
-    # 3. Generate the playlist
-    generate_playlist()
+    # 3. Generate playlists for all users (or global if no users)
+    generate_all_playlists()
 
 
 def reschedule():

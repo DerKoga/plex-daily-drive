@@ -8,7 +8,7 @@ import database as db
 import plex_client
 import podcasts
 import scheduler
-from generator import generate_playlist
+from generator import generate_playlist, generate_all_playlists
 
 logging.basicConfig(
     level=logging.INFO,
@@ -113,6 +113,9 @@ def api_libraries():
 def api_generate():
     import time
 
+    data = request.get_json() or {}
+    user_id = data.get("user_id")
+
     # Refresh podcasts and scan Plex first
     try:
         downloaded = podcasts.refresh_podcasts()
@@ -122,7 +125,11 @@ def api_generate():
     except Exception as e:
         logger.exception("Pre-generation podcast refresh failed")
 
-    result = generate_playlist()
+    if user_id:
+        result = generate_playlist(user_id=int(user_id))
+    else:
+        result = generate_all_playlists()
+
     if result:
         return jsonify({"success": True, "playlist": result})
     return jsonify({"success": False, "error": "Generation failed - check logs"}), 500
@@ -216,6 +223,115 @@ def api_podcast_episodes():
         return jsonify([])
     episodes = podcasts.get_feed_episodes(feed_url, limit=10)
     return jsonify(episodes)
+
+
+# --- User API ---
+
+
+@app.route("/api/users", methods=["GET"])
+def api_get_users():
+    users = db.get_users()
+    # Add podcast assignments for each user
+    for user in users:
+        user["podcasts"] = db.get_user_podcasts(user["id"])
+    return jsonify(users)
+
+
+@app.route("/api/users", methods=["POST"])
+def api_add_user():
+    data = request.get_json()
+    if not data or not data.get("name"):
+        return jsonify({"error": "Name is required"}), 400
+
+    music_libraries = data.get("music_libraries", [])
+    if isinstance(music_libraries, list):
+        music_libraries = json.dumps(music_libraries)
+
+    user_id = db.add_user(
+        name=data["name"],
+        plex_username=data.get("plex_username", ""),
+        plex_token=data.get("plex_token", ""),
+        music_count=int(data.get("music_count", 20)),
+        podcast_count=int(data.get("podcast_count", 3)),
+        discovery_ratio=int(data.get("discovery_ratio", 40)),
+        playlist_prefix=data.get("playlist_prefix", "Daily Drive"),
+        keep_days=int(data.get("keep_days", 7)),
+        music_libraries=music_libraries,
+    )
+
+    # Set podcast assignments
+    podcast_ids = data.get("podcast_ids", [])
+    if podcast_ids:
+        db.set_user_podcasts(user_id, podcast_ids)
+
+    return jsonify({"success": True, "id": user_id})
+
+
+@app.route("/api/users/<int:user_id>", methods=["PUT"])
+def api_update_user(user_id):
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    update_data = {}
+    for key in ["name", "plex_username", "plex_token", "music_count",
+                "podcast_count", "discovery_ratio", "playlist_prefix",
+                "keep_days", "enabled"]:
+        if key in data:
+            update_data[key] = data[key]
+
+    if "music_libraries" in data:
+        libs = data["music_libraries"]
+        update_data["music_libraries"] = json.dumps(libs) if isinstance(libs, list) else libs
+
+    if update_data:
+        db.update_user(user_id, **update_data)
+
+    # Update podcast assignments
+    if "podcast_ids" in data:
+        db.set_user_podcasts(user_id, data["podcast_ids"])
+
+    # Reset user's cached server connection
+    plex_client.reset_connection()
+
+    return jsonify({"success": True})
+
+
+@app.route("/api/users/<int:user_id>", methods=["DELETE"])
+def api_remove_user(user_id):
+    db.remove_user(user_id)
+    plex_client.reset_connection()
+    return jsonify({"success": True})
+
+
+@app.route("/api/users/<int:user_id>/toggle", methods=["POST"])
+def api_toggle_user(user_id):
+    data = request.get_json() or {}
+    enabled = data.get("enabled", True)
+    db.toggle_user(user_id, enabled)
+    return jsonify({"success": True})
+
+
+@app.route("/api/users/<int:user_id>/podcasts", methods=["GET"])
+def api_get_user_podcasts(user_id):
+    podcast_details = db.get_user_podcast_details(user_id)
+    return jsonify(podcast_details)
+
+
+@app.route("/api/users/<int:user_id>/podcasts", methods=["POST"])
+def api_set_user_podcasts(user_id):
+    data = request.get_json()
+    if not data or "podcast_ids" not in data:
+        return jsonify({"error": "podcast_ids required"}), 400
+    db.set_user_podcasts(user_id, data["podcast_ids"])
+    return jsonify({"success": True})
+
+
+@app.route("/api/plex-users")
+def api_plex_users():
+    """List available Plex users for selection."""
+    users = plex_client.get_plex_users()
+    return jsonify(users)
 
 
 POSTER_PATH = "/data/playlist_cover.jpg"

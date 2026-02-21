@@ -52,6 +52,31 @@ def init_db():
                 added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                plex_username TEXT NOT NULL DEFAULT '',
+                plex_token TEXT NOT NULL DEFAULT '',
+                music_count INTEGER DEFAULT 20,
+                podcast_count INTEGER DEFAULT 3,
+                discovery_ratio INTEGER DEFAULT 40,
+                playlist_prefix TEXT DEFAULT 'Daily Drive',
+                keep_days INTEGER DEFAULT 7,
+                music_libraries TEXT DEFAULT '[]',
+                enabled INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS user_podcasts (
+                user_id INTEGER NOT NULL,
+                podcast_id INTEGER NOT NULL,
+                PRIMARY KEY (user_id, podcast_id),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (podcast_id) REFERENCES podcasts(id) ON DELETE CASCADE
+            )
+        """)
         defaults = {
             "plex_url": config.PLEX_URL,
             "plex_token": config.PLEX_TOKEN,
@@ -189,3 +214,93 @@ def toggle_podcast(podcast_id, enabled):
             "UPDATE podcasts SET enabled = ? WHERE id = ?",
             (1 if enabled else 0, podcast_id),
         )
+
+
+# --- User DB ---
+
+def add_user(name, plex_username="", plex_token="", music_count=20,
+             podcast_count=3, discovery_ratio=40, playlist_prefix="Daily Drive",
+             keep_days=7, music_libraries="[]"):
+    with get_db() as conn:
+        cursor = conn.execute(
+            """INSERT INTO users (name, plex_username, plex_token, music_count,
+               podcast_count, discovery_ratio, playlist_prefix, keep_days, music_libraries)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (name, plex_username, plex_token, music_count, podcast_count,
+             discovery_ratio, playlist_prefix, keep_days, music_libraries),
+        )
+        return cursor.lastrowid
+
+
+def update_user(user_id, **kwargs):
+    allowed = {"name", "plex_username", "plex_token", "music_count",
+               "podcast_count", "discovery_ratio", "playlist_prefix",
+               "keep_days", "music_libraries", "enabled"}
+    updates = {k: v for k, v in kwargs.items() if k in allowed}
+    if not updates:
+        return
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [user_id]
+    with get_db() as conn:
+        conn.execute(f"UPDATE users SET {set_clause} WHERE id = ?", values)
+
+
+def remove_user(user_id):
+    with get_db() as conn:
+        conn.execute("DELETE FROM user_podcasts WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+
+
+def get_users():
+    with get_db() as conn:
+        rows = conn.execute("SELECT * FROM users ORDER BY name").fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_user(user_id):
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        return dict(row) if row else None
+
+
+def toggle_user(user_id, enabled):
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE users SET enabled = ? WHERE id = ?",
+            (1 if enabled else 0, user_id),
+        )
+
+
+# --- User-Podcast assignments ---
+
+def set_user_podcasts(user_id, podcast_ids):
+    """Set the podcast subscriptions for a user (replaces all existing)."""
+    with get_db() as conn:
+        conn.execute("DELETE FROM user_podcasts WHERE user_id = ?", (user_id,))
+        for pid in podcast_ids:
+            conn.execute(
+                "INSERT OR IGNORE INTO user_podcasts (user_id, podcast_id) VALUES (?, ?)",
+                (user_id, pid),
+            )
+
+
+def get_user_podcasts(user_id):
+    """Get all podcast IDs assigned to a user."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT podcast_id FROM user_podcasts WHERE user_id = ?", (user_id,)
+        ).fetchall()
+        return [row["podcast_id"] for row in rows]
+
+
+def get_user_podcast_details(user_id):
+    """Get full podcast details for a user's subscriptions."""
+    with get_db() as conn:
+        rows = conn.execute(
+            """SELECT p.* FROM podcasts p
+               JOIN user_podcasts up ON p.id = up.podcast_id
+               WHERE up.user_id = ?
+               ORDER BY p.name""",
+            (user_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]

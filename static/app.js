@@ -2,6 +2,8 @@
 let settings = {};
 let libraries = [];
 let schedules = [{ hour: 6, minute: 0 }];
+let allUsers = [];
+let allPodcasts = [];
 
 // --- Init ---
 
@@ -37,8 +39,9 @@ function initTabs() {
             document.getElementById("tab-" + tab.dataset.tab).classList.add("active");
 
             if (tab.dataset.tab === "history") loadHistory();
-            if (tab.dataset.tab === "generate") loadPlaylists();
+            if (tab.dataset.tab === "generate") { loadPlaylists(); loadGenerateUserSelect(); }
             if (tab.dataset.tab === "podcasts") loadSubscribedPodcasts();
+            if (tab.dataset.tab === "users") { loadUsers(); loadPlexUsers(); }
         });
     });
 }
@@ -265,6 +268,255 @@ async function testConnection() {
     }
 }
 
+// --- Users ---
+
+async function loadUsers() {
+    try {
+        const res = await fetch("/api/users");
+        allUsers = await res.json();
+
+        // Also load all podcasts for reference
+        const podRes = await fetch("/api/podcasts");
+        allPodcasts = await podRes.json();
+
+        const container = document.getElementById("users-list");
+
+        if (allUsers.length === 0) {
+            container.innerHTML = '<p class="muted">Noch keine Benutzer angelegt. Ohne Benutzer wird die Playlist global generiert.</p>';
+            return;
+        }
+
+        container.innerHTML = allUsers
+            .map((u) => {
+                const podcastNames = allPodcasts
+                    .filter((p) => u.podcasts && u.podcasts.includes(p.id))
+                    .map((p) => p.name);
+                const badges = podcastNames.length > 0
+                    ? podcastNames.map((n) => `<span class="badge">${escapeHtml(n)}</span>`).join("")
+                    : '<span class="muted" style="font-size:0.8rem">Keine Podcasts</span>';
+
+                return `
+                    <div class="user-item ${u.enabled ? "" : "disabled"}">
+                        <div class="user-info">
+                            <div class="user-name">${escapeHtml(u.name)}</div>
+                            <div class="user-meta">
+                                Plex: ${escapeHtml(u.plex_username || "–")} &middot;
+                                ${u.music_count} Musik &middot;
+                                ${u.podcast_count} Podcasts &middot;
+                                ${u.discovery_ratio}% Neuentdeckungen
+                            </div>
+                            <div class="user-podcasts-badges">${badges}</div>
+                        </div>
+                        <div class="user-actions">
+                            <button class="btn btn-small btn-secondary" onclick="editUser(${u.id})">Bearbeiten</button>
+                            <button class="btn btn-small btn-secondary" onclick="toggleUser(${u.id}, ${!u.enabled})">
+                                ${u.enabled ? "Deaktivieren" : "Aktivieren"}
+                            </button>
+                            <button class="btn btn-small btn-danger" onclick="removeUser(${u.id}, '${escapeHtml(u.name)}')">Entfernen</button>
+                        </div>
+                    </div>
+                `;
+            })
+            .join("");
+    } catch (e) {
+        document.getElementById("users-list").innerHTML = '<p class="muted">Fehler beim Laden</p>';
+    }
+}
+
+async function loadPlexUsers() {
+    try {
+        const res = await fetch("/api/plex-users");
+        const plexUsers = await res.json();
+        const container = document.getElementById("plex-users-list");
+
+        if (plexUsers.length === 0) {
+            container.innerHTML = '<p class="muted">Keine Plex-Benutzer gefunden. Ist Plex verbunden?</p>';
+            return;
+        }
+
+        container.innerHTML = '<div class="plex-user-chips">' +
+            plexUsers.map((u) => `
+                <span class="plex-user-chip ${u.is_admin ? "admin" : ""}"
+                      onclick="selectPlexUser('${escapeHtml(u.username)}')"
+                      title="Klicken zum Ausw\u00e4hlen">
+                    ${escapeHtml(u.title)} ${u.is_admin ? "(Admin)" : ""}
+                </span>
+            `).join("") +
+            '</div>';
+    } catch {
+        document.getElementById("plex-users-list").innerHTML = '<p class="muted">Fehler beim Laden der Plex-Benutzer</p>';
+    }
+}
+
+function selectPlexUser(username) {
+    document.getElementById("new-user-plex-username").value = username;
+    if (!document.getElementById("new-user-name").value) {
+        document.getElementById("new-user-name").value = username;
+    }
+}
+
+async function addUser() {
+    const name = document.getElementById("new-user-name").value.trim();
+    const plexUsername = document.getElementById("new-user-plex-username").value.trim();
+    const plexToken = document.getElementById("new-user-plex-token").value.trim();
+
+    if (!name) {
+        showResult("add-user-result", false, "Name ist erforderlich");
+        return;
+    }
+
+    try {
+        const res = await fetch("/api/users", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                name,
+                plex_username: plexUsername,
+                plex_token: plexToken,
+            }),
+        });
+        const data = await res.json();
+        if (data.success) {
+            showResult("add-user-result", true, `Benutzer "${name}" hinzugef\u00fcgt!`);
+            document.getElementById("new-user-name").value = "";
+            document.getElementById("new-user-plex-username").value = "";
+            document.getElementById("new-user-plex-token").value = "";
+            loadUsers();
+        } else {
+            showResult("add-user-result", false, data.error || "Fehler beim Hinzuf\u00fcgen");
+        }
+    } catch (e) {
+        showResult("add-user-result", false, "Fehler: " + e.message);
+    }
+}
+
+async function editUser(userId) {
+    const user = allUsers.find((u) => u.id === userId);
+    if (!user) return;
+
+    document.getElementById("edit-user-id").value = userId;
+    document.getElementById("edit-user-name").value = user.name;
+    document.getElementById("edit-user-plex-username").value = user.plex_username || "";
+    document.getElementById("edit-user-plex-token").value = user.plex_token || "";
+    document.getElementById("edit-user-prefix").value = user.playlist_prefix || "Daily Drive";
+    document.getElementById("edit-user-music-count").value = user.music_count || 20;
+    document.getElementById("edit-user-podcast-count").value = user.podcast_count || 3;
+    document.getElementById("edit-user-discovery").value = user.discovery_ratio || 40;
+    document.getElementById("edit-discovery-label").textContent = (user.discovery_ratio || 40) + "%";
+    document.getElementById("edit-user-keep-days").value = user.keep_days || 7;
+
+    // Render library checkboxes
+    const artistLibs = libraries.filter((l) => l.type === "artist");
+    let selectedLibs = [];
+    try {
+        selectedLibs = typeof user.music_libraries === "string"
+            ? JSON.parse(user.music_libraries)
+            : (user.music_libraries || []);
+    } catch { /* ignore */ }
+    renderLibraryList("edit-user-libraries", artistLibs, selectedLibs, "edit-user-lib");
+
+    // Render podcast checkboxes
+    const podContainer = document.getElementById("edit-user-podcasts");
+    if (allPodcasts.length === 0) {
+        podContainer.innerHTML = '<p class="muted">Keine Podcasts abonniert. F\u00fcge zuerst Podcasts im Podcasts-Tab hinzu.</p>';
+    } else {
+        const userPodIds = (user.podcasts || []).map(String);
+        podContainer.innerHTML = allPodcasts
+            .map((p) => {
+                const checked = userPodIds.includes(String(p.id)) ? "checked" : "";
+                const selectedClass = checked ? "selected" : "";
+                return `
+                    <label class="library-item ${selectedClass}">
+                        <input type="checkbox" data-prefix="edit-user-pod" data-key="${p.id}" ${checked}
+                               onchange="this.parentElement.classList.toggle('selected', this.checked)">
+                        <span>${escapeHtml(p.name)}</span>
+                    </label>
+                `;
+            })
+            .join("");
+    }
+
+    document.getElementById("user-edit-modal").classList.remove("hidden");
+}
+
+function closeUserModal() {
+    document.getElementById("user-edit-modal").classList.add("hidden");
+}
+
+async function saveUser() {
+    const userId = parseInt(document.getElementById("edit-user-id").value);
+    const musicLibs = getSelectedLibraries("edit-user-lib");
+    const podcastIds = getSelectedLibraries("edit-user-pod").map(Number);
+
+    const data = {
+        name: document.getElementById("edit-user-name").value,
+        plex_username: document.getElementById("edit-user-plex-username").value,
+        plex_token: document.getElementById("edit-user-plex-token").value,
+        playlist_prefix: document.getElementById("edit-user-prefix").value,
+        music_count: parseInt(document.getElementById("edit-user-music-count").value) || 20,
+        podcast_count: parseInt(document.getElementById("edit-user-podcast-count").value) || 3,
+        discovery_ratio: parseInt(document.getElementById("edit-user-discovery").value) || 40,
+        keep_days: parseInt(document.getElementById("edit-user-keep-days").value) || 7,
+        music_libraries: musicLibs,
+        podcast_ids: podcastIds,
+    };
+
+    try {
+        const res = await fetch(`/api/users/${userId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data),
+        });
+        const result = await res.json();
+        if (result.success) {
+            showResult("edit-user-result", true, "Gespeichert!");
+            setTimeout(() => {
+                closeUserModal();
+                loadUsers();
+            }, 800);
+        } else {
+            showResult("edit-user-result", false, result.error || "Fehler");
+        }
+    } catch (e) {
+        showResult("edit-user-result", false, "Fehler: " + e.message);
+    }
+}
+
+async function toggleUser(userId, enabled) {
+    try {
+        await fetch(`/api/users/${userId}/toggle`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ enabled }),
+        });
+        loadUsers();
+    } catch (e) {
+        console.error("Toggle user failed:", e);
+    }
+}
+
+async function removeUser(userId, name) {
+    if (!confirm(`Benutzer "${name}" wirklich entfernen?`)) return;
+    try {
+        await fetch(`/api/users/${userId}`, { method: "DELETE" });
+        loadUsers();
+    } catch (e) {
+        console.error("Remove user failed:", e);
+    }
+}
+
+function toggleNewUserToken() {
+    const input = document.getElementById("new-user-plex-token");
+    const btn = input.closest(".token-field").querySelector(".btn");
+    if (input.type === "password") {
+        input.type = "text";
+        btn.textContent = "Verbergen";
+    } else {
+        input.type = "password";
+        btn.textContent = "Zeigen";
+    }
+}
+
 // --- Podcasts ---
 
 async function searchPodcasts() {
@@ -315,7 +567,7 @@ async function subscribePodcast(podcast) {
             loadSubscribedPodcasts();
             // Visual feedback
             document.getElementById("podcast-search-results").innerHTML =
-                '<div class="result-box success">\"' + escapeHtml(podcast.name) + '\" abonniert!</div>';
+                '<div class="result-box success">"' + escapeHtml(podcast.name) + '" abonniert!</div>';
         }
     } catch (e) {
         console.error("Subscribe failed:", e);
@@ -399,21 +651,53 @@ async function refreshPodcasts() {
 
 // --- Generate ---
 
+async function loadGenerateUserSelect() {
+    try {
+        const res = await fetch("/api/users");
+        const users = await res.json();
+        const select = document.getElementById("generate-user-select");
+
+        // Keep the first "All" option
+        select.innerHTML = '<option value="">Alle Benutzer / Global</option>';
+        users.filter((u) => u.enabled).forEach((u) => {
+            select.innerHTML += `<option value="${u.id}">${escapeHtml(u.name)}</option>`;
+        });
+    } catch {
+        // ignore
+    }
+}
+
 async function generateNow() {
     const btn = document.getElementById("generate-btn");
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> Generiere...';
 
+    const userId = document.getElementById("generate-user-select").value;
+
     try {
-        const res = await fetch("/api/generate", { method: "POST" });
+        const body = userId ? { user_id: parseInt(userId) } : {};
+        const res = await fetch("/api/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
         const data = await res.json();
         if (data.success) {
             const p = data.playlist;
-            showResult(
-                "generate-result",
-                true,
-                `Playlist "${p.name}" erstellt: ${p.music} Musik + ${p.podcasts} Podcasts = ${p.total} Titel`
-            );
+            if (Array.isArray(p)) {
+                // Multiple playlists generated
+                const summaries = p.map((pl) =>
+                    `"${pl.name}"${pl.user ? " (" + pl.user + ")" : ""}: ${pl.music} Musik + ${pl.podcasts} Podcasts`
+                );
+                showResult("generate-result", true, summaries.join("\n"));
+            } else {
+                showResult(
+                    "generate-result",
+                    true,
+                    `Playlist "${p.name}" erstellt: ${p.music} Musik + ${p.podcasts} Podcasts = ${p.total} Titel` +
+                    (p.user ? ` (${p.user})` : "")
+                );
+            }
             loadPlaylists();
         } else {
             showResult("generate-result", false, "Fehler: " + (data.error || "Unbekannter Fehler"));

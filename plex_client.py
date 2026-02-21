@@ -12,6 +12,7 @@ import database as db
 logger = logging.getLogger(__name__)
 
 _server = None
+_user_servers = {}
 
 
 def _get_plex_url():
@@ -46,9 +47,63 @@ def get_server():
     return _server
 
 
+def get_server_for_user(user):
+    """Get a PlexServer connection for a specific user.
+
+    If the user has a plex_token, use it directly.
+    If the user has a plex_username, use switchUser.
+    Falls back to the admin server.
+    """
+    global _user_servers
+
+    user_id = user["id"]
+    if user_id in _user_servers:
+        return _user_servers[user_id]
+
+    try:
+        if user.get("plex_token"):
+            url = _get_plex_url()
+            session = _make_session(url)
+            server = PlexServer(url, user["plex_token"], session=session)
+            _user_servers[user_id] = server
+            return server
+
+        if user.get("plex_username"):
+            admin_server = get_server()
+            server = admin_server.switchUser(user["plex_username"])
+            _user_servers[user_id] = server
+            return server
+    except Exception as e:
+        logger.exception(
+            "Failed to get server for user '%s', falling back to admin",
+            user.get("name", "?"),
+        )
+
+    return get_server()
+
+
+def get_plex_users():
+    """List all users available on the Plex server (for user selection)."""
+    try:
+        server = get_server()
+        account = server.myPlexAccount()
+        users = [{"username": account.username, "title": account.title, "is_admin": True}]
+        for user in account.users():
+            users.append({
+                "username": user.username or user.title,
+                "title": user.title,
+                "is_admin": False,
+            })
+        return users
+    except Exception as e:
+        logger.exception("Failed to list Plex users")
+        return []
+
+
 def reset_connection():
-    global _server
+    global _server, _user_servers
     _server = None
+    _user_servers = {}
 
 
 def test_connection():
@@ -83,10 +138,10 @@ def get_libraries():
         return []
 
 
-def get_random_tracks(library_key, count=20):
+def get_random_tracks(library_key, count=20, server=None):
     try:
-        server = get_server()
-        section = server.library.sectionByID(int(library_key))
+        srv = server or get_server()
+        section = srv.library.sectionByID(int(library_key))
         all_tracks = section.searchTracks(sort="random", maxresults=count)
         return all_tracks
     except Exception as e:
@@ -94,7 +149,7 @@ def get_random_tracks(library_key, count=20):
         return []
 
 
-def get_favorite_tracks(library_key, count=10):
+def get_favorite_tracks(library_key, count=10, server=None):
     """Get frequently played / highly rated tracks from a library.
 
     Fetches the most-played tracks and randomly samples from them
@@ -102,8 +157,8 @@ def get_favorite_tracks(library_key, count=10):
     Falls back to random tracks if no play history exists.
     """
     try:
-        server = get_server()
-        section = server.library.sectionByID(int(library_key))
+        srv = server or get_server()
+        section = srv.library.sectionByID(int(library_key))
         pool_size = count * 5
 
         # Get most-played tracks
@@ -114,7 +169,7 @@ def get_favorite_tracks(library_key, count=10):
 
         if not played:
             logger.info("No play history in library %s, falling back to random", library_key)
-            return get_random_tracks(library_key, count)
+            return get_random_tracks(library_key, count, server=srv)
 
         # Randomly sample from the favorites pool
         sample_size = min(count, len(played))
@@ -124,18 +179,18 @@ def get_favorite_tracks(library_key, count=10):
         return selected
     except Exception as e:
         logger.exception("Failed to get favorite tracks from library %s", library_key)
-        return get_random_tracks(library_key, count)
+        return get_random_tracks(library_key, count, server=server)
 
 
-def get_discovery_tracks(library_key, count=10):
+def get_discovery_tracks(library_key, count=10, server=None):
     """Get tracks the user hasn't listened to yet.
 
     Fetches recently added tracks that have never been played.
     Falls back to random tracks if not enough unplayed tracks exist.
     """
     try:
-        server = get_server()
-        section = server.library.sectionByID(int(library_key))
+        srv = server or get_server()
+        section = srv.library.sectionByID(int(library_key))
         pool_size = count * 10
 
         # Get recently added tracks
@@ -155,7 +210,7 @@ def get_discovery_tracks(library_key, count=10):
 
         if not unplayed:
             logger.info("No unplayed tracks in library %s, falling back to random", library_key)
-            return get_random_tracks(library_key, count)
+            return get_random_tracks(library_key, count, server=srv)
 
         sample_size = min(count, len(unplayed))
         selected = random.sample(unplayed, sample_size)
@@ -164,7 +219,7 @@ def get_discovery_tracks(library_key, count=10):
         return selected
     except Exception as e:
         logger.exception("Failed to get discovery tracks from library %s", library_key)
-        return get_random_tracks(library_key, count)
+        return get_random_tracks(library_key, count, server=server)
 
 
 def find_tracks_by_artist(artist_name, max_results=5):
@@ -238,10 +293,10 @@ def scan_all_music_libraries():
         logger.exception("Failed to scan music libraries")
 
 
-def create_playlist(name, items, poster_path=None, description=None):
+def create_playlist(name, items, poster_path=None, description=None, server=None):
     try:
-        server = get_server()
-        playlist = server.createPlaylist(name, items=items)
+        srv = server or get_server()
+        playlist = srv.createPlaylist(name, items=items)
         logger.info("Created playlist '%s' with %d items", name, len(items))
         _apply_playlist_metadata(playlist, poster_path, description)
         return playlist
@@ -250,12 +305,12 @@ def create_playlist(name, items, poster_path=None, description=None):
         return None
 
 
-def update_or_create_playlist(name, items, poster_path=None, description=None):
+def update_or_create_playlist(name, items, poster_path=None, description=None, server=None):
     """Update an existing playlist's items or create a new one if it doesn't exist."""
     try:
-        server = get_server()
+        srv = server or get_server()
         existing = None
-        for playlist in server.playlists():
+        for playlist in srv.playlists():
             if playlist.title == name:
                 existing = playlist
                 break
@@ -273,7 +328,7 @@ def update_or_create_playlist(name, items, poster_path=None, description=None):
             return existing
         else:
             # No existing playlist, create a new one
-            return create_playlist(name, items, poster_path, description)
+            return create_playlist(name, items, poster_path, description, server=srv)
     except Exception as e:
         logger.exception("Failed to update/create playlist '%s'", name)
         return None
@@ -295,10 +350,10 @@ def _apply_playlist_metadata(playlist, poster_path=None, description=None):
             logger.warning("Failed to set description for '%s': %s", playlist.title, e)
 
 
-def delete_playlist(name):
+def delete_playlist(name, server=None):
     try:
-        server = get_server()
-        for playlist in server.playlists():
+        srv = server or get_server()
+        for playlist in srv.playlists():
             if playlist.title == name:
                 playlist.delete()
                 logger.info("Deleted playlist '%s'", name)
@@ -309,10 +364,10 @@ def delete_playlist(name):
         return False
 
 
-def get_playlists(prefix=None):
+def get_playlists(prefix=None, server=None):
     try:
-        server = get_server()
-        playlists = server.playlists()
+        srv = server or get_server()
+        playlists = srv.playlists()
         if prefix:
             playlists = [p for p in playlists if p.title.startswith(prefix)]
         return [
