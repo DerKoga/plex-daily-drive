@@ -624,6 +624,30 @@ header h1 {
     font-size: 0.8rem;
 }
 
+.podcast-max-episodes {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.podcast-max-input {
+    width: 55px;
+    padding: 4px 6px;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    text-align: center;
+}
+
+.podcast-max-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
 .podcast-actions {
     display: flex;
     gap: 6px;

@@ -155,6 +155,7 @@ def get_favorite_tracks(library_key, count=10, server=None):
     Fetches the most-played tracks and randomly samples from them
     to add variety while staying within the user's favorites.
     Falls back to random tracks if no play history exists.
+    Always returns exactly `count` tracks (supplementing with random if needed).
     """
     try:
         srv = server or get_server()
@@ -174,6 +175,20 @@ def get_favorite_tracks(library_key, count=10, server=None):
         # Randomly sample from the favorites pool
         sample_size = min(count, len(played))
         selected = random.sample(played, sample_size)
+
+        # Fill up with random tracks if not enough favorites
+        if len(selected) < count:
+            shortfall = count - len(selected)
+            logger.info("Only %d favorites, supplementing with %d random tracks (library %s)",
+                        len(selected), shortfall, library_key)
+            filler = get_random_tracks(library_key, shortfall * 2, server=srv)
+            selected_keys = {getattr(t, "ratingKey", None) for t in selected}
+            for t in filler:
+                if getattr(t, "ratingKey", None) not in selected_keys:
+                    selected.append(t)
+                    if len(selected) >= count:
+                        break
+
         logger.debug("Selected %d favorites from %d played tracks (library %s)",
                       len(selected), len(played), library_key)
         return selected
@@ -187,6 +202,7 @@ def get_discovery_tracks(library_key, count=10, server=None):
 
     Fetches recently added tracks that have never been played.
     Falls back to random tracks if not enough unplayed tracks exist.
+    Always returns exactly `count` tracks (supplementing with random if needed).
     """
     try:
         srv = server or get_server()
@@ -214,6 +230,20 @@ def get_discovery_tracks(library_key, count=10, server=None):
 
         sample_size = min(count, len(unplayed))
         selected = random.sample(unplayed, sample_size)
+
+        # Fill up with random tracks if not enough discoveries
+        if len(selected) < count:
+            shortfall = count - len(selected)
+            logger.info("Only %d discoveries, supplementing with %d random tracks (library %s)",
+                        len(selected), shortfall, library_key)
+            filler = get_random_tracks(library_key, shortfall * 2, server=srv)
+            selected_keys = {getattr(t, "ratingKey", None) for t in selected}
+            for t in filler:
+                if getattr(t, "ratingKey", None) not in selected_keys:
+                    selected.append(t)
+                    if len(selected) >= count:
+                        break
+
         logger.debug("Selected %d discoveries from %d unplayed tracks (library %s)",
                       len(selected), len(unplayed), library_key)
         return selected

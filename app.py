@@ -198,6 +198,14 @@ def api_toggle_podcast(podcast_id):
     return jsonify({"success": True})
 
 
+@app.route("/api/podcasts/<int:podcast_id>/max-episodes", methods=["POST"])
+def api_set_podcast_max_episodes(podcast_id):
+    data = request.get_json() or {}
+    max_episodes = int(data.get("max_episodes", 3))
+    db.update_podcast_max_episodes(podcast_id, max_episodes)
+    return jsonify({"success": True})
+
+
 @app.route("/api/podcasts/refresh", methods=["POST"])
 def api_refresh_podcasts():
     count = podcasts.refresh_podcasts()

@@ -181,8 +181,8 @@ def _do_generate(music_libraries, music_count, podcast_count, prefix,
     playlist = plex_client.update_or_create_playlist(
         playlist_name,
         playlist_items,
-        poster_path=poster_path or None,
-        description=description or None,
+        poster_path=poster_path if poster_path else None,
+        description=description,
         server=server,
     )
 

@@ -49,9 +49,11 @@ def init_db():
                 artwork TEXT DEFAULT '',
                 genre TEXT DEFAULT '',
                 enabled INTEGER DEFAULT 1,
+                max_episodes INTEGER DEFAULT 3,
                 added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        _migrate_podcasts_table(conn)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -106,6 +108,14 @@ def init_db():
             )
         # Migrate: if old schedule_hour/schedule_minute exist, convert to schedules
         _migrate_schedule(conn)
+
+
+def _migrate_podcasts_table(conn):
+    """Add new columns to existing podcasts table if missing."""
+    try:
+        conn.execute("SELECT max_episodes FROM podcasts LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE podcasts ADD COLUMN max_episodes INTEGER DEFAULT 3")
 
 
 def _migrate_users_table(conn):
@@ -229,6 +239,14 @@ def toggle_podcast(podcast_id, enabled):
         conn.execute(
             "UPDATE podcasts SET enabled = ? WHERE id = ?",
             (1 if enabled else 0, podcast_id),
+        )
+
+
+def update_podcast_max_episodes(podcast_id, max_episodes):
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE podcasts SET max_episodes = ? WHERE id = ?",
+            (max_episodes, podcast_id),
         )
 
 

@@ -20,6 +20,14 @@ document.addEventListener("DOMContentLoaded", () => {
             if (e.key === "Enter") searchPodcasts();
         });
     }
+
+    // Close modal on click outside
+    const modal = document.getElementById("user-edit-modal");
+    if (modal) {
+        modal.addEventListener("click", (e) => {
+            if (e.target === modal) closeUserModal();
+        });
+    }
 });
 
 // --- Tabs ---
@@ -613,6 +621,11 @@ async function loadSubscribedPodcasts() {
                         <div class="podcast-name">${escapeHtml(p.name)}</div>
                         <div class="podcast-artist">${escapeHtml(p.artist)}</div>
                     </div>
+                    <div class="podcast-max-episodes">
+                        <label class="muted" style="font-size:0.75rem">Max Episoden</label>
+                        <input type="number" class="podcast-max-input" value="${p.max_episodes || 3}" min="1" max="50"
+                               onchange="setPodcastMaxEpisodes(${p.id}, this.value)">
+                    </div>
                     <div class="podcast-actions">
                         <button class="btn btn-small btn-secondary" onclick="togglePodcast(${p.id}, ${!p.enabled})">
                             ${p.enabled ? "Deaktivieren" : "Aktivieren"}
@@ -639,6 +652,18 @@ async function togglePodcast(id, enabled) {
         loadSubscribedPodcasts();
     } catch (e) {
         console.error("Toggle failed:", e);
+    }
+}
+
+async function setPodcastMaxEpisodes(id, value) {
+    try {
+        await fetch(`/api/podcasts/${id}/max-episodes`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ max_episodes: parseInt(value) || 3 }),
+        });
+    } catch (e) {
+        console.error("Set max episodes failed:", e);
     }
 }
 

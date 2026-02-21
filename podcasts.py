@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 import feedparser
 import requests
 from mutagen.mp3 import MP3
-from mutagen.id3 import ID3, TIT2, TPE1, TALB, TDRC, TCON, error
+from mutagen.id3 import ID3, TIT2, TPE1, TPE2, TALB, TDRC, TCON, error
 
 import database as db
 
@@ -125,7 +125,6 @@ def refresh_podcasts():
     """Check all subscribed podcasts for today's episodes and download them."""
     podcasts = db.get_podcasts()
     download_path = db.get_setting("podcast_download_path", "/podcasts")
-    max_episodes = int(db.get_setting("podcast_max_episodes", "3"))
 
     total_downloaded = 0
     for podcast in podcasts:
@@ -145,7 +144,8 @@ def refresh_podcasts():
         if result:
             total_downloaded += 1
 
-        # Clean up old episodes beyond max
+        # Clean up old episodes beyond per-podcast max
+        max_episodes = int(podcast.get("max_episodes", 3))
         _cleanup_old_episodes(podcast["name"], download_path, max_episodes)
 
     if total_downloaded > 0:
@@ -198,7 +198,12 @@ def _cleanup_old_episodes(podcast_name, base_path, max_keep):
 
 
 def _tag_mp3(filepath, podcast_name, episode):
-    """Add ID3 tags to downloaded MP3."""
+    """Add ID3 tags to downloaded MP3.
+
+    Always sets the artist (TPE1) and album artist (TPE2) to the podcast name
+    (= publisher/show name), regardless of what individual episode metadata says.
+    This ensures Plex shows the podcast publisher as the artist.
+    """
     try:
         try:
             audio = MP3(filepath, ID3=ID3)
@@ -206,8 +211,13 @@ def _tag_mp3(filepath, podcast_name, episode):
             audio = MP3(filepath)
             audio.add_tags()
 
+        # Clear existing artist tags to prevent episode guests overriding publisher
+        for tag in ["TPE1", "TPE2", "TIT2", "TALB", "TCON", "TDRC"]:
+            audio.tags.delall(tag)
+
         audio.tags.add(TIT2(encoding=3, text=episode["title"]))
         audio.tags.add(TPE1(encoding=3, text=podcast_name))
+        audio.tags.add(TPE2(encoding=3, text=podcast_name))
         audio.tags.add(TALB(encoding=3, text=podcast_name))
         audio.tags.add(TCON(encoding=3, text="Podcast"))
         if episode.get("published"):
