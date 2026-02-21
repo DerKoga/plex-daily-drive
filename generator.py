@@ -54,13 +54,14 @@ def generate_playlist():
     # Clean up old playlists
     _cleanup_old_playlists(prefix, int(settings.get("keep_days", "7")))
 
-    # Delete existing playlist for today if it exists
-    plex_client.delete_playlist(playlist_name)
-
-    # Create the new playlist with optional cover
+    # Update existing playlist or create a new one
     poster_path = settings.get("playlist_poster_path", "")
-    playlist = plex_client.create_playlist(
-        playlist_name, playlist_items, poster_path=poster_path or None
+    description = settings.get("playlist_description", "")
+    playlist = plex_client.update_or_create_playlist(
+        playlist_name,
+        playlist_items,
+        poster_path=poster_path or None,
+        description=description or None,
     )
 
     if playlist:

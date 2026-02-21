@@ -84,6 +84,7 @@ async function loadSettings() {
         document.getElementById("podcast-count").value = settings.podcast_count || "3";
         document.getElementById("podcast-download-path").value = settings.podcast_download_path || "/podcasts";
         document.getElementById("podcast-max-episodes").value = settings.podcast_max_episodes || "3";
+        document.getElementById("playlist-description").value = settings.playlist_description || "";
         document.getElementById("enabled").checked = settings.enabled === "true";
 
         // Load schedules
@@ -113,6 +114,7 @@ async function saveSettings() {
         podcast_count: document.getElementById("podcast-count").value,
         podcast_download_path: document.getElementById("podcast-download-path").value,
         podcast_max_episodes: document.getElementById("podcast-max-episodes").value,
+        playlist_description: document.getElementById("playlist-description").value,
         enabled: document.getElementById("enabled").checked ? "true" : "false",
         music_libraries: musicLibs,
         schedules: schedules,

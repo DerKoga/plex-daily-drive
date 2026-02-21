@@ -78,6 +78,7 @@ def api_save_settings():
         "podcast_unplayed_only",
         "podcast_download_path",
         "podcast_max_episodes",
+        "playlist_description",
     }
 
     to_save = {}

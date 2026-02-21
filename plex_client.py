@@ -164,21 +164,61 @@ def scan_all_music_libraries():
         logger.exception("Failed to scan music libraries")
 
 
-def create_playlist(name, items, poster_path=None):
+def create_playlist(name, items, poster_path=None, description=None):
     try:
         server = get_server()
         playlist = server.createPlaylist(name, items=items)
         logger.info("Created playlist '%s' with %d items", name, len(items))
-        if poster_path and os.path.isfile(poster_path):
-            try:
-                playlist.uploadPoster(filepath=poster_path)
-                logger.info("Set poster for playlist '%s'", name)
-            except Exception as e:
-                logger.warning("Failed to set poster for '%s': %s", name, e)
+        _apply_playlist_metadata(playlist, poster_path, description)
         return playlist
     except Exception as e:
         logger.exception("Failed to create playlist '%s'", name)
         return None
+
+
+def update_or_create_playlist(name, items, poster_path=None, description=None):
+    """Update an existing playlist's items or create a new one if it doesn't exist."""
+    try:
+        server = get_server()
+        existing = None
+        for playlist in server.playlists():
+            if playlist.title == name:
+                existing = playlist
+                break
+
+        if existing:
+            # Remove all current items
+            current_items = existing.items()
+            if current_items:
+                existing.removeItems(current_items)
+            # Add new items
+            if items:
+                existing.addItems(items)
+            logger.info("Updated playlist '%s' with %d items", name, len(items))
+            _apply_playlist_metadata(existing, poster_path, description)
+            return existing
+        else:
+            # No existing playlist, create a new one
+            return create_playlist(name, items, poster_path, description)
+    except Exception as e:
+        logger.exception("Failed to update/create playlist '%s'", name)
+        return None
+
+
+def _apply_playlist_metadata(playlist, poster_path=None, description=None):
+    """Apply poster and description to a playlist."""
+    if poster_path and os.path.isfile(poster_path):
+        try:
+            playlist.uploadPoster(filepath=poster_path)
+            logger.info("Set poster for playlist '%s'", playlist.title)
+        except Exception as e:
+            logger.warning("Failed to set poster for '%s': %s", playlist.title, e)
+    if description is not None:
+        try:
+            playlist.editSummary(description)
+            logger.info("Set description for playlist '%s'", playlist.title)
+        except Exception as e:
+            logger.warning("Failed to set description for '%s': %s", playlist.title, e)
 
 
 def delete_playlist(name):
