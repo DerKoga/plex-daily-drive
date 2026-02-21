@@ -99,10 +99,9 @@ def _generate_for_user(user_id):
     # Get user's podcast subscriptions
     user_podcast_list = db.get_user_podcast_details(user_id)
 
-    # Use global settings for poster/description
-    settings = db.get_all_settings()
-    poster_path = settings.get("playlist_poster_path", "")
-    description = settings.get("playlist_description", "")
+    # Use user-specific poster and description
+    poster_path = user.get("poster_path", "")
+    description = user.get("playlist_description", "")
 
     logger.info("Generating playlist for user '%s'", user["name"])
 

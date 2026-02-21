@@ -66,20 +66,10 @@ def api_save_settings():
     allowed_keys = {
         "plex_url",
         "plex_token",
-        "playlist_prefix",
-        "music_count",
-        "podcast_count",
-        "music_libraries",
-        "podcast_libraries",
         "schedules",
         "enabled",
-        "keep_days",
-        "podcast_recent_only",
-        "podcast_unplayed_only",
         "podcast_download_path",
         "podcast_max_episodes",
-        "playlist_description",
-        "discovery_ratio",
     }
 
     to_save = {}
@@ -276,7 +266,7 @@ def api_update_user(user_id):
     update_data = {}
     for key in ["name", "plex_username", "plex_token", "music_count",
                 "podcast_count", "discovery_ratio", "playlist_prefix",
-                "keep_days", "enabled"]:
+                "keep_days", "playlist_description", "enabled"]:
         if key in data:
             update_data[key] = data[key]
 
@@ -334,34 +324,42 @@ def api_plex_users():
     return jsonify(users)
 
 
-POSTER_PATH = "/data/playlist_cover.jpg"
+POSTER_DIR = "/data/covers"
 
 
-@app.route("/api/poster", methods=["POST"])
-def api_upload_poster():
+def _user_poster_path(user_id):
+    return os.path.join(POSTER_DIR, f"user_{user_id}.jpg")
+
+
+@app.route("/api/users/<int:user_id>/poster", methods=["POST"])
+def api_upload_user_poster(user_id):
     if "file" not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     file = request.files["file"]
     if not file.filename:
         return jsonify({"error": "No file selected"}), 400
-    file.save(POSTER_PATH)
-    db.save_setting("playlist_poster_path", POSTER_PATH)
+    os.makedirs(POSTER_DIR, exist_ok=True)
+    poster_path = _user_poster_path(user_id)
+    file.save(poster_path)
+    db.update_user(user_id, poster_path=poster_path)
     return jsonify({"success": True})
 
 
-@app.route("/api/poster", methods=["DELETE"])
-def api_delete_poster():
-    if os.path.isfile(POSTER_PATH):
-        os.remove(POSTER_PATH)
-    db.save_setting("playlist_poster_path", "")
+@app.route("/api/users/<int:user_id>/poster", methods=["DELETE"])
+def api_delete_user_poster(user_id):
+    poster_path = _user_poster_path(user_id)
+    if os.path.isfile(poster_path):
+        os.remove(poster_path)
+    db.update_user(user_id, poster_path="")
     return jsonify({"success": True})
 
 
-@app.route("/api/poster", methods=["GET"])
-def api_get_poster():
-    poster = db.get_setting("playlist_poster_path", "")
+@app.route("/api/users/<int:user_id>/poster", methods=["GET"])
+def api_get_user_poster(user_id):
+    from flask import send_file
+    user = db.get_user(user_id)
+    poster = user.get("poster_path", "") if user else ""
     if poster and os.path.isfile(poster):
-        from flask import send_file
         return send_file(poster, mimetype="image/jpeg")
     return jsonify({"has_poster": False}), 404
 

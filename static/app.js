@@ -20,12 +20,6 @@ document.addEventListener("DOMContentLoaded", () => {
             if (e.key === "Enter") searchPodcasts();
         });
     }
-
-    // Discovery ratio slider label update
-    const slider = document.getElementById("discovery-ratio");
-    if (slider) {
-        slider.addEventListener("input", updateDiscoveryLabel);
-    }
 });
 
 // --- Tabs ---
@@ -78,7 +72,7 @@ async function loadStatus() {
     }
 }
 
-// --- Settings ---
+// --- Settings (server-level only) ---
 
 async function loadSettings() {
     try {
@@ -87,15 +81,8 @@ async function loadSettings() {
 
         document.getElementById("plex-url").value = settings.plex_url || "";
         document.getElementById("plex-token").value = settings.plex_token || "";
-        document.getElementById("playlist-prefix").value = settings.playlist_prefix || "Daily Drive";
-        document.getElementById("keep-days").value = settings.keep_days || "7";
-        document.getElementById("music-count").value = settings.music_count || "20";
-        document.getElementById("podcast-count").value = settings.podcast_count || "3";
         document.getElementById("podcast-download-path").value = settings.podcast_download_path || "/podcasts";
         document.getElementById("podcast-max-episodes").value = settings.podcast_max_episodes || "3";
-        document.getElementById("playlist-description").value = settings.playlist_description || "";
-        document.getElementById("discovery-ratio").value = settings.discovery_ratio || "40";
-        updateDiscoveryLabel();
         document.getElementById("enabled").checked = settings.enabled === "true";
 
         // Load schedules
@@ -111,24 +98,15 @@ async function loadSettings() {
 }
 
 async function saveSettings() {
-    const musicLibs = getSelectedLibraries("music");
-
     // Collect schedules from UI
     collectSchedules();
 
     const data = {
         plex_url: document.getElementById("plex-url").value,
         plex_token: document.getElementById("plex-token").value,
-        playlist_prefix: document.getElementById("playlist-prefix").value,
-        keep_days: document.getElementById("keep-days").value,
-        music_count: document.getElementById("music-count").value,
-        podcast_count: document.getElementById("podcast-count").value,
         podcast_download_path: document.getElementById("podcast-download-path").value,
         podcast_max_episodes: document.getElementById("podcast-max-episodes").value,
-        playlist_description: document.getElementById("playlist-description").value,
-        discovery_ratio: document.getElementById("discovery-ratio").value,
         enabled: document.getElementById("enabled").checked ? "true" : "false",
-        music_libraries: musicLibs,
         schedules: schedules,
     };
 
@@ -192,20 +170,8 @@ async function loadLibraries() {
     try {
         const res = await fetch("/api/libraries");
         libraries = await res.json();
-
-        const settingsRes = await fetch("/api/settings");
-        const currentSettings = await settingsRes.json();
-
-        let selectedMusic = [];
-        try {
-            selectedMusic = JSON.parse(currentSettings.music_libraries || "[]");
-        } catch { /* ignore */ }
-
-        const artistLibs = libraries.filter((l) => l.type === "artist");
-
-        renderLibraryList("music-libraries", artistLibs, selectedMusic, "music");
     } catch (e) {
-        document.getElementById("music-libraries").innerHTML = '<p class="muted">Fehler beim Laden der Bibliotheken. Ist Plex verbunden?</p>';
+        console.error("Failed to load libraries:", e);
     }
 }
 
@@ -300,7 +266,7 @@ async function loadUsers() {
                         <div class="user-info">
                             <div class="user-name">${escapeHtml(u.name)}</div>
                             <div class="user-meta">
-                                Plex: ${escapeHtml(u.plex_username || "–")} &middot;
+                                Plex: ${escapeHtml(u.plex_username || "\u2013")} &middot;
                                 ${u.music_count} Musik &middot;
                                 ${u.podcast_count} Podcasts &middot;
                                 ${u.discovery_ratio}% Neuentdeckungen
@@ -404,6 +370,7 @@ async function editUser(userId) {
     document.getElementById("edit-user-discovery").value = user.discovery_ratio || 40;
     document.getElementById("edit-discovery-label").textContent = (user.discovery_ratio || 40) + "%";
     document.getElementById("edit-user-keep-days").value = user.keep_days || 7;
+    document.getElementById("edit-user-description").value = user.playlist_description || "";
 
     // Render library checkboxes
     const artistLibs = libraries.filter((l) => l.type === "artist");
@@ -436,6 +403,9 @@ async function editUser(userId) {
             .join("");
     }
 
+    // Load user cover preview
+    refreshUserCoverPreview(userId);
+
     document.getElementById("user-edit-modal").classList.remove("hidden");
 }
 
@@ -457,6 +427,7 @@ async function saveUser() {
         podcast_count: parseInt(document.getElementById("edit-user-podcast-count").value) || 3,
         discovery_ratio: parseInt(document.getElementById("edit-user-discovery").value) || 40,
         keep_days: parseInt(document.getElementById("edit-user-keep-days").value) || 7,
+        playlist_description: document.getElementById("edit-user-description").value,
         music_libraries: musicLibs,
         podcast_ids: podcastIds,
     };
@@ -517,6 +488,56 @@ function toggleNewUserToken() {
     }
 }
 
+// --- User Cover ---
+
+async function uploadUserCover(input) {
+    if (!input.files || !input.files[0]) return;
+    const userId = document.getElementById("edit-user-id").value;
+    if (!userId) return;
+
+    const formData = new FormData();
+    formData.append("file", input.files[0]);
+
+    try {
+        const res = await fetch(`/api/users/${userId}/poster`, { method: "POST", body: formData });
+        const data = await res.json();
+        if (data.success) {
+            showResult("edit-cover-result", true, "Cover hochgeladen!");
+            refreshUserCoverPreview(userId);
+        } else {
+            showResult("edit-cover-result", false, "Fehler: " + (data.error || "Upload fehlgeschlagen"));
+        }
+    } catch (e) {
+        showResult("edit-cover-result", false, "Fehler: " + e.message);
+    }
+    input.value = "";
+}
+
+async function deleteUserCover() {
+    const userId = document.getElementById("edit-user-id").value;
+    if (!userId) return;
+
+    try {
+        await fetch(`/api/users/${userId}/poster`, { method: "DELETE" });
+        showResult("edit-cover-result", true, "Cover entfernt");
+        refreshUserCoverPreview(userId);
+    } catch (e) {
+        showResult("edit-cover-result", false, "Fehler: " + e.message);
+    }
+}
+
+function refreshUserCoverPreview(userId) {
+    const img = document.getElementById("edit-cover-img");
+    const placeholder = document.getElementById("edit-cover-placeholder");
+    img.src = `/api/users/${userId}/poster?` + Date.now();
+    img.style.display = "";
+    placeholder.style.display = "none";
+    img.onerror = () => {
+        img.style.display = "none";
+        placeholder.style.display = "flex";
+    };
+}
+
 // --- Podcasts ---
 
 async function searchPodcasts() {
@@ -565,7 +586,6 @@ async function subscribePodcast(podcast) {
         const data = await res.json();
         if (data.success) {
             loadSubscribedPodcasts();
-            // Visual feedback
             document.getElementById("podcast-search-results").innerHTML =
                 '<div class="result-box success">"' + escapeHtml(podcast.name) + '" abonniert!</div>';
         }
@@ -657,7 +677,6 @@ async function loadGenerateUserSelect() {
         const users = await res.json();
         const select = document.getElementById("generate-user-select");
 
-        // Keep the first "All" option
         select.innerHTML = '<option value="">Alle Benutzer / Global</option>';
         users.filter((u) => u.enabled).forEach((u) => {
             select.innerHTML += `<option value="${u.id}">${escapeHtml(u.name)}</option>`;
@@ -685,7 +704,6 @@ async function generateNow() {
         if (data.success) {
             const p = data.playlist;
             if (Array.isArray(p)) {
-                // Multiple playlists generated
                 const summaries = p.map((pl) =>
                     `"${pl.name}"${pl.user ? " (" + pl.user + ")" : ""}: ${pl.music} Musik + ${pl.podcasts} Podcasts`
                 );
@@ -784,57 +802,7 @@ async function loadHistory() {
     }
 }
 
-// --- Cover ---
-
-async function uploadCover(input) {
-    if (!input.files || !input.files[0]) return;
-
-    const formData = new FormData();
-    formData.append("file", input.files[0]);
-
-    try {
-        const res = await fetch("/api/poster", { method: "POST", body: formData });
-        const data = await res.json();
-        if (data.success) {
-            showResult("cover-result", true, "Cover hochgeladen!");
-            refreshCoverPreview();
-        } else {
-            showResult("cover-result", false, "Fehler: " + (data.error || "Upload fehlgeschlagen"));
-        }
-    } catch (e) {
-        showResult("cover-result", false, "Fehler: " + e.message);
-    }
-    input.value = "";
-}
-
-async function deleteCover() {
-    try {
-        await fetch("/api/poster", { method: "DELETE" });
-        showResult("cover-result", true, "Cover entfernt");
-        refreshCoverPreview();
-    } catch (e) {
-        showResult("cover-result", false, "Fehler: " + e.message);
-    }
-}
-
-function refreshCoverPreview() {
-    const img = document.getElementById("cover-img");
-    const placeholder = document.getElementById("cover-placeholder");
-    img.src = "/api/poster?" + Date.now();
-    img.style.display = "";
-    placeholder.style.display = "none";
-    img.onerror = () => {
-        img.style.display = "none";
-        placeholder.style.display = "flex";
-    };
-}
-
 // --- Helpers ---
-
-function updateDiscoveryLabel() {
-    const val = document.getElementById("discovery-ratio").value;
-    document.getElementById("discovery-ratio-label").textContent = val + "%";
-}
 
 function toggleToken() {
     const input = document.getElementById("plex-token");

@@ -64,10 +64,14 @@ def init_db():
                 playlist_prefix TEXT DEFAULT 'Daily Drive',
                 keep_days INTEGER DEFAULT 7,
                 music_libraries TEXT DEFAULT '[]',
+                playlist_description TEXT DEFAULT '',
+                poster_path TEXT DEFAULT '',
                 enabled INTEGER DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # Migrate: add new columns to existing users table
+        _migrate_users_table(conn)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS user_podcasts (
                 user_id INTEGER NOT NULL,
@@ -102,6 +106,18 @@ def init_db():
             )
         # Migrate: if old schedule_hour/schedule_minute exist, convert to schedules
         _migrate_schedule(conn)
+
+
+def _migrate_users_table(conn):
+    """Add new columns to existing users table if missing."""
+    try:
+        conn.execute("SELECT playlist_description FROM users LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE users ADD COLUMN playlist_description TEXT DEFAULT ''")
+    try:
+        conn.execute("SELECT poster_path FROM users LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE users ADD COLUMN poster_path TEXT DEFAULT ''")
 
 
 def _migrate_schedule(conn):
@@ -220,14 +236,17 @@ def toggle_podcast(podcast_id, enabled):
 
 def add_user(name, plex_username="", plex_token="", music_count=20,
              podcast_count=3, discovery_ratio=40, playlist_prefix="Daily Drive",
-             keep_days=7, music_libraries="[]"):
+             keep_days=7, music_libraries="[]", playlist_description="",
+             poster_path=""):
     with get_db() as conn:
         cursor = conn.execute(
             """INSERT INTO users (name, plex_username, plex_token, music_count,
-               podcast_count, discovery_ratio, playlist_prefix, keep_days, music_libraries)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               podcast_count, discovery_ratio, playlist_prefix, keep_days,
+               music_libraries, playlist_description, poster_path)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (name, plex_username, plex_token, music_count, podcast_count,
-             discovery_ratio, playlist_prefix, keep_days, music_libraries),
+             discovery_ratio, playlist_prefix, keep_days, music_libraries,
+             playlist_description, poster_path),
         )
         return cursor.lastrowid
 
@@ -235,7 +254,8 @@ def add_user(name, plex_username="", plex_token="", music_count=20,
 def update_user(user_id, **kwargs):
     allowed = {"name", "plex_username", "plex_token", "music_count",
                "podcast_count", "discovery_ratio", "playlist_prefix",
-               "keep_days", "music_libraries", "enabled"}
+               "keep_days", "music_libraries", "playlist_description",
+               "poster_path", "enabled"}
     updates = {k: v for k, v in kwargs.items() if k in allowed}
     if not updates:
         return

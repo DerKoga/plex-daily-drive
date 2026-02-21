@@ -63,68 +63,7 @@
             </div>
 
             <div class="card">
-                <h2>Bibliotheken</h2>
-                <div class="form-group">
-                    <label>Musik-Bibliotheken</label>
-                    <div id="music-libraries" class="library-list">
-                        <p class="muted">Lade Bibliotheken...</p>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card">
-                <h2>Playlist-Cover</h2>
-                <div class="cover-section">
-                    <div class="cover-preview" id="cover-preview">
-                        <img id="cover-img" src="/api/poster" alt="Playlist Cover"
-                             onerror="this.style.display='none'; document.getElementById('cover-placeholder').style.display='flex'">
-                        <div id="cover-placeholder" class="cover-placeholder">Kein Cover</div>
-                    </div>
-                    <div class="cover-actions">
-                        <label class="btn btn-secondary btn-small" for="cover-upload">Bild ausw&auml;hlen</label>
-                        <input type="file" id="cover-upload" accept="image/*" onchange="uploadCover(this)" style="display:none">
-                        <button class="btn btn-small btn-danger" onclick="deleteCover()">Entfernen</button>
-                    </div>
-                    <div id="cover-result" class="result-box hidden"></div>
-                </div>
-            </div>
-
-            <div class="card">
-                <h2>Playlist-Konfiguration</h2>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="playlist-prefix">Playlist-Name Prefix</label>
-                        <input type="text" id="playlist-prefix" value="Daily Drive">
-                    </div>
-                    <div class="form-group">
-                        <label for="keep-days">Aufbewahren (Tage)</label>
-                        <input type="number" id="keep-days" value="7" min="1" max="365">
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="music-count">Anzahl Musiktitel</label>
-                        <input type="number" id="music-count" value="20" min="0" max="200">
-                    </div>
-                    <div class="form-group">
-                        <label for="podcast-count">Anzahl Podcast-Episoden</label>
-                        <input type="number" id="podcast-count" value="3" min="0" max="50">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label for="discovery-ratio">Anteil Neuentdeckungen: <span id="discovery-ratio-label">40%</span></label>
-                    <div class="slider-row">
-                        <span class="slider-label">Favoriten</span>
-                        <input type="range" id="discovery-ratio" min="0" max="100" value="40" step="5">
-                        <span class="slider-label">Neuentdeckungen</span>
-                    </div>
-                    <small>Verh&auml;ltnis zwischen h&auml;ufig geh&ouml;rten Songs und neuen, ungeh&ouml;rten Titeln</small>
-                </div>
-                <div class="form-group">
-                    <label for="playlist-description">Playlist-Beschreibung</label>
-                    <textarea id="playlist-description" rows="3" placeholder="Beschreibung f&uuml;r die Playlist..."></textarea>
-                    <small>Wird als Beschreibung in Plex angezeigt</small>
-                </div>
+                <h2>Podcast-Einstellungen</h2>
                 <div class="form-row">
                     <div class="form-group">
                         <label for="podcast-download-path">Podcast Download-Pfad</label>
@@ -254,6 +193,30 @@
                     <div id="edit-user-podcasts" class="library-list">
                         <p class="muted">Lade...</p>
                     </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="edit-user-description">Playlist-Beschreibung</label>
+                    <textarea id="edit-user-description" rows="3" placeholder="Beschreibung f&uuml;r die Playlist..."></textarea>
+                    <small>Wird als Beschreibung in Plex angezeigt</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Playlist-Cover</label>
+                    <div class="cover-section">
+                        <div class="cover-preview" id="edit-cover-preview">
+                            <img id="edit-cover-img" src="" alt="Cover"
+                                 onerror="this.style.display='none'; document.getElementById('edit-cover-placeholder').style.display='flex'"
+                                 style="display:none">
+                            <div id="edit-cover-placeholder" class="cover-placeholder">Kein Cover</div>
+                        </div>
+                        <div class="cover-actions">
+                            <label class="btn btn-secondary btn-small" for="edit-cover-upload">Bild ausw&auml;hlen</label>
+                            <input type="file" id="edit-cover-upload" accept="image/*" onchange="uploadUserCover(this)" style="display:none">
+                            <button class="btn btn-small btn-danger" onclick="deleteUserCover()">Entfernen</button>
+                        </div>
+                    </div>
+                    <div id="edit-cover-result" class="result-box hidden"></div>
                 </div>
 
                 <div class="modal-actions">
