@@ -1,4 +1,5 @@
 import logging
+import os
 from urllib.parse import urlparse
 
 import requests
@@ -163,11 +164,17 @@ def scan_all_music_libraries():
         logger.exception("Failed to scan music libraries")
 
 
-def create_playlist(name, items):
+def create_playlist(name, items, poster_path=None):
     try:
         server = get_server()
         playlist = server.createPlaylist(name, items=items)
         logger.info("Created playlist '%s' with %d items", name, len(items))
+        if poster_path and os.path.isfile(poster_path):
+            try:
+                playlist.uploadPoster(filepath=poster_path)
+                logger.info("Set poster for playlist '%s'", name)
+            except Exception as e:
+                logger.warning("Failed to set poster for '%s': %s", name, e)
         return playlist
     except Exception as e:
         logger.exception("Failed to create playlist '%s'", name)

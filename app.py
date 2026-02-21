@@ -216,6 +216,38 @@ def api_podcast_episodes():
     return jsonify(episodes)
 
 
+POSTER_PATH = "/data/playlist_cover.jpg"
+
+
+@app.route("/api/poster", methods=["POST"])
+def api_upload_poster():
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    file = request.files["file"]
+    if not file.filename:
+        return jsonify({"error": "No file selected"}), 400
+    file.save(POSTER_PATH)
+    db.save_setting("playlist_poster_path", POSTER_PATH)
+    return jsonify({"success": True})
+
+
+@app.route("/api/poster", methods=["DELETE"])
+def api_delete_poster():
+    if os.path.isfile(POSTER_PATH):
+        os.remove(POSTER_PATH)
+    db.save_setting("playlist_poster_path", "")
+    return jsonify({"success": True})
+
+
+@app.route("/api/poster", methods=["GET"])
+def api_get_poster():
+    poster = db.get_setting("playlist_poster_path", "")
+    if poster and os.path.isfile(poster):
+        from flask import send_file
+        return send_file(poster, mimetype="image/jpeg")
+    return jsonify({"has_poster": False}), 404
+
+
 def create_app():
     os.makedirs(os.path.dirname(db.config.DATABASE_PATH), exist_ok=True)
     db.init_db()

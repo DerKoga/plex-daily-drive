@@ -47,9 +47,9 @@ def generate_playlist():
     # Build the Daily Drive mix: interleave podcasts between music blocks
     playlist_items = _interleave(music_tracks, podcast_episodes)
 
-    # Create playlist name with date
-    today = datetime.now().strftime("%Y-%m-%d")
-    playlist_name = f"{prefix} - {today}"
+    # Create playlist name with date (DD.MM.YYYY)
+    today = datetime.now().strftime("%d.%m.%Y")
+    playlist_name = f"{prefix} ({today})"
 
     # Clean up old playlists
     _cleanup_old_playlists(prefix, int(settings.get("keep_days", "7")))
@@ -57,8 +57,11 @@ def generate_playlist():
     # Delete existing playlist for today if it exists
     plex_client.delete_playlist(playlist_name)
 
-    # Create the new playlist
-    playlist = plex_client.create_playlist(playlist_name, playlist_items)
+    # Create the new playlist with optional cover
+    poster_path = settings.get("playlist_poster_path", "")
+    playlist = plex_client.create_playlist(
+        playlist_name, playlist_items, poster_path=poster_path or None
+    )
 
     if playlist:
         actual_music = len(music_tracks)
@@ -179,16 +182,26 @@ def _interleave(music_tracks, podcast_episodes):
 def _cleanup_old_playlists(prefix, keep_days):
     """Remove playlists older than keep_days."""
     cutoff = datetime.now() - timedelta(days=keep_days)
-    cutoff_str = cutoff.strftime("%Y-%m-%d")
 
     try:
         server = plex_client.get_server()
         for playlist in server.playlists():
-            if not playlist.title.startswith(prefix + " - "):
+            if not playlist.title.startswith(prefix):
                 continue
-            date_part = playlist.title.replace(prefix + " - ", "")
+            # Parse date from both formats:
+            # New: "Daily Drive (21.02.2025)"
+            # Old: "Daily Drive - 2025-02-21"
+            title = playlist.title
             try:
-                if date_part < cutoff_str:
+                if "(" in title and title.endswith(")"):
+                    date_str = title.split("(")[-1].rstrip(")")
+                    playlist_date = datetime.strptime(date_str, "%d.%m.%Y")
+                elif " - " in title:
+                    date_str = title.split(" - ")[-1]
+                    playlist_date = datetime.strptime(date_str, "%Y-%m-%d")
+                else:
+                    continue
+                if playlist_date < cutoff:
                     playlist.delete()
                     logger.info("Cleaned up old playlist: %s", playlist.title)
             except ValueError:

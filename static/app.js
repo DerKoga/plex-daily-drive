@@ -489,6 +489,51 @@ async function loadHistory() {
     }
 }
 
+// --- Cover ---
+
+async function uploadCover(input) {
+    if (!input.files || !input.files[0]) return;
+
+    const formData = new FormData();
+    formData.append("file", input.files[0]);
+
+    try {
+        const res = await fetch("/api/poster", { method: "POST", body: formData });
+        const data = await res.json();
+        if (data.success) {
+            showResult("cover-result", true, "Cover hochgeladen!");
+            refreshCoverPreview();
+        } else {
+            showResult("cover-result", false, "Fehler: " + (data.error || "Upload fehlgeschlagen"));
+        }
+    } catch (e) {
+        showResult("cover-result", false, "Fehler: " + e.message);
+    }
+    input.value = "";
+}
+
+async function deleteCover() {
+    try {
+        await fetch("/api/poster", { method: "DELETE" });
+        showResult("cover-result", true, "Cover entfernt");
+        refreshCoverPreview();
+    } catch (e) {
+        showResult("cover-result", false, "Fehler: " + e.message);
+    }
+}
+
+function refreshCoverPreview() {
+    const img = document.getElementById("cover-img");
+    const placeholder = document.getElementById("cover-placeholder");
+    img.src = "/api/poster?" + Date.now();
+    img.style.display = "";
+    placeholder.style.display = "none";
+    img.onerror = () => {
+        img.style.display = "none";
+        placeholder.style.display = "flex";
+    };
+}
+
 // --- Helpers ---
 
 function toggleToken() {

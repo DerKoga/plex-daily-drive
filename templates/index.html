@@ -71,6 +71,23 @@
             </div>
 
             <div class="card">
+                <h2>Playlist-Cover</h2>
+                <div class="cover-section">
+                    <div class="cover-preview" id="cover-preview">
+                        <img id="cover-img" src="/api/poster" alt="Playlist Cover"
+                             onerror="this.style.display='none'; document.getElementById('cover-placeholder').style.display='flex'">
+                        <div id="cover-placeholder" class="cover-placeholder">Kein Cover</div>
+                    </div>
+                    <div class="cover-actions">
+                        <label class="btn btn-secondary btn-small" for="cover-upload">Bild ausw&auml;hlen</label>
+                        <input type="file" id="cover-upload" accept="image/*" onchange="uploadCover(this)" style="display:none">
+                        <button class="btn btn-small btn-danger" onclick="deleteCover()">Entfernen</button>
+                    </div>
+                    <div id="cover-result" class="result-box hidden"></div>
+                </div>
+            </div>
+
+            <div class="card">
                 <h2>Playlist-Konfiguration</h2>
                 <div class="form-row">
                     <div class="form-group">
